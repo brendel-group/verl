@@ -18,7 +18,7 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     if data_source == 'openai/gsm8k':
         from . import gsm8k
         res = gsm8k.compute_score(solution_str, ground_truth)
-    elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval']:
+    elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval', 'HuggingFaceH4/aime_2024', 'bethgelab/CuratedThoughts', 'agentica-org/DeepScaleR-Preview-Dataset', 'SynthLabsAI/Big-Math-RL-Verified']:
         # from . import math
         # res = math.compute_score(solution_str, ground_truth)
 
