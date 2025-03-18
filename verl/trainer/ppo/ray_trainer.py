@@ -1061,7 +1061,12 @@ class RayPPOTrainer(object):
 
                     if self.config.algorithm.only_positive_advantages.enable:
                         batch, filter_metrics = self.filter_positive_advantages(batch)
+                        # skip batch if no positive advantages
+                        if filter_metrics['positive_advantages_ratio'] == 0.0:
+                            print(f'Skipping batch with no positive advantages')
+                            continue
                         metrics.update(filter_metrics)
+
 
                     total_seen_samples += len(batch.batch)
                     metrics['total_seen_samples'] = total_seen_samples

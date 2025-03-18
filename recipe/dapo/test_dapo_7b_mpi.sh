@@ -27,16 +27,18 @@ n_resp_per_prompt=16
 use_token_level_loss=True
 
 # Ray
-RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
-WORKING_DIR=${WORKING_DIR:-"${PWD}"}
-RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
+# RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
+# WORKING_DIR=${WORKING_DIR:-"${PWD}"}
+# RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
+#NNODES=${NNODES:-4}
 NNODES=8
+
 # Paths
-RAY_DATA_HOME=${RAY_DATA_HOME:-"${HOME}/verl"}
-MODEL_PATH=${MODEL_PATH:-"${RAY_DATA_HOME}/models/Qwen2.5-Math-7B"}
-CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/ckpts/${project_name}/${exp_name}"}
-TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/dapo-math-17k.parquet"}
-TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/aime-2024.parquet"}
+RAY_DATA_HOME=${RAY_DATA_HOME:-"/fast/pmayilvahanan/"}
+MODEL_PATH=Qwen/Qwen2.5-Math-7B
+CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/post_training/verl_checkpoints/dapo/${exp_name}"}
+TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/dapo_math_17k/train.parquet"}
+#TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/datasets/aime_2024/test.parquet"}
 
 # Algorithm
 ## Train
@@ -52,11 +54,11 @@ infer_micro_batch_size=null
 train_micro_batch_size=null
 offload=False
 
-ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
-    --working-dir "${WORKING_DIR}" \
-    -- python3 -m verl.trainer.main_ppo \
+# ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
+#     --working-dir "${WORKING_DIR}" \
+python3 -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
-    data.val_files="${TEST_FILE}" \
+    data.val_files=[/fast/pmayilvahanan/datasets/math/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
     data.prompt_key=prompt \
     data.truncation='left' \
     data.max_prompt_length=${max_prompt_length} \
