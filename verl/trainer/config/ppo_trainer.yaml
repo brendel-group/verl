@@ -189,6 +189,8 @@ algorithm:
     # `fill_to_train_bsz` will repeat sampling with generation batch size until there are enough qualified groups for the training batch size
     fill_to_train_bsz: True
     drop_last_mini_batch: True
+  only_positive_advantages:
+    enable: False
 
 trainer:
   balance_batch: True
