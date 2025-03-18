@@ -384,11 +384,11 @@ class DataProto:
             idxs = torch.tensor(idxs, dtype=torch.int32)
 
         if isinstance(idxs, np.ndarray):
-            idxs_np = idxs
+            idxs_np = idxs.astype(np.int32)
             idxs_torch = torch.from_numpy(idxs)
         else:  # torch.Tensor
             idxs_torch = idxs
-            idxs_np = idxs.detach().cpu().numpy()
+            idxs_np = idxs.detach().cpu().numpy().astype(np.int32)
 
         if self.batch is not None:
             # Use TensorDict's built-in indexing capabilities
@@ -401,6 +401,7 @@ class DataProto:
 
         selected_non_tensor = {}
         for key, val in self.non_tensor_batch.items():
+            val = np.array(val, dtype=object)
             selected_non_tensor[key] = val[idxs_np]
 
         return DataProto(batch=selected_batch, non_tensor_batch=selected_non_tensor, meta_info=self.meta_info)
