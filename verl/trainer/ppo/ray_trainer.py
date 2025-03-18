@@ -1097,7 +1097,9 @@ class RayPPOTrainer(object):
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
                     
                     if self.config.algorithm.only_positive_advantages.enable:
+                        print(f"batch shape before filtering: {batch.batch['advantages'].shape}")
                         batch, filter_metrics = self.filter_positive_advantages(batch)
+                        print(f"batch shape after filtering: {batch.batch['advantages'].shape}")
                         # skip batch if no positive advantages
                         if filter_metrics['positive_advantages_ratio'] == 0.0:
                             print(f'Skipping batch with no positive advantages')
