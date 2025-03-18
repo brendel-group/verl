@@ -1013,7 +1013,8 @@ class RayPPOTrainer(object):
 
                         # Collect the sequence reward for each trajectory
                         prompt_uid2metric_vals = defaultdict(list)
-                        for uid, metric_val in zip(batch.non_tensor_batch['uid'], batch.batch[metric_name]):
+                        for uid, metric_val in zip(batch.non_tensor_batch['uid'], batch.non_tensor_batch[metric_name]):
+                        #for uid, metric_val in zip(batch.non_tensor_batch['uid'], batch.batch[metric_name]):
                             prompt_uid2metric_vals[uid].append(metric_val)
 
                         prompt_uid2metric_std = {}
@@ -1057,19 +1058,10 @@ class RayPPOTrainer(object):
                         filter_metric_dict["final_traj_bsz"] = len(kept_traj_idxs)
 
                         metrics.update({f"train/filter/{k}": v for k, v in filter_metric_dict.items()})
+                        kept_traj_idxs = np.array(kept_traj_idxs)
                         batch = batch.select_idxs(kept_traj_idxs)
 
-                    if self.config.algorithm.only_positive_advantages.enable:
-                        batch, filter_metrics = self.filter_positive_advantages(batch)
-                        # skip batch if no positive advantages
-                        if filter_metrics['positive_advantages_ratio'] == 0.0:
-                            print(f'Skipping batch with no positive advantages')
-                            continue
-                        metrics.update(filter_metrics)
-
-
-                    total_seen_samples += len(batch.batch)
-                    metrics['total_seen_samples'] = total_seen_samples
+                    
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
@@ -1103,6 +1095,18 @@ class RayPPOTrainer(object):
                                                   gamma=self.config.algorithm.gamma,
                                                   lam=self.config.algorithm.lam,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
+                    
+                    if self.config.algorithm.only_positive_advantages.enable:
+                        batch, filter_metrics = self.filter_positive_advantages(batch)
+                        # skip batch if no positive advantages
+                        if filter_metrics['positive_advantages_ratio'] == 0.0:
+                            print(f'Skipping batch with no positive advantages')
+                            continue
+                        metrics.update(filter_metrics)
+
+
+                    total_seen_samples += len(batch.batch)
+                    metrics['total_seen_samples'] = total_seen_samples
 
                     # update critic
                     if self.use_critic:
