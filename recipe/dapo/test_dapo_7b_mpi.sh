@@ -17,13 +17,17 @@ overlong_buffer_len=512
 overlong_penalty_factor=1.0
 
 enable_filter_groups=True
-filter_groups_metric=acc
+filter_groups_metric=seq_final_reward
 fill_to_train_bsz=True
-train_prompt_bsz=512
-gen_prompt_bsz=$((train_prompt_bsz * 3))
+#train_prompt_bsz=512
+train_prompt_bsz=32
+multiplier=3
+gen_prompt_bsz=$((train_prompt_bsz * multiplier))
 train_prompt_mini_bsz=32
-n_resp_per_prompt=16
+train_micro_batch_size=8
 
+
+n_resp_per_prompt=16
 use_token_level_loss=True
 
 # Ray
@@ -31,7 +35,7 @@ use_token_level_loss=True
 # WORKING_DIR=${WORKING_DIR:-"${PWD}"}
 # RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 #NNODES=${NNODES:-4}
-NNODES=8
+NNODES=1
 
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/fast/pmayilvahanan/"}
@@ -42,8 +46,8 @@ TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/dapo_math_17k/train.parquet"
 
 # Algorithm
 ## Train
-max_prompt_length=$((1024 * 1))
-max_response_length=$((1024 * 3))
+max_prompt_length=$((1024 * 2))
+max_response_length=$((1024 * 2))
 ## Validation
 val_top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 
@@ -58,7 +62,7 @@ offload=False
 #     --working-dir "${WORKING_DIR}" \
 python3 -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
-    data.val_files=[/fast/pmayilvahanan/datasets/math/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
+    data.val_files=/fast/pmayilvahanan/datasets/aime_2024/test.parquet \
     data.prompt_key=prompt \
     data.truncation='left' \
     data.max_prompt_length=${max_prompt_length} \
@@ -122,7 +126,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes="${NNODES}" \
     +trainer.val_before_train=True \
-    trainer.test_freq=2 \
+    trainer.test_freq=1 \
     trainer.save_freq=2 \
     trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
