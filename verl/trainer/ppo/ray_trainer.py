@@ -505,13 +505,13 @@ class RayPPOTrainer(object):
         self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
     def _validate(self):
-        data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
 
         # Lists to collect samples for the table
         sample_inputs = []
         sample_outputs = []
         sample_scores = []
+        sample_sources = []
 
         for test_data in self.val_dataloader:
             test_batch = DataProto.from_single_dict(test_data)
@@ -550,105 +550,135 @@ class RayPPOTrainer(object):
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
             test_output_gen_batch_padded = self.actor_rollout_wg.generate_sequences(test_gen_batch_padded)
             # unpad
-            test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
+            test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size * self.config.actor_rollout_ref.rollout.val_kwargs.n)
             print('validation generation end')
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch['responses']
             output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
             sample_outputs.extend(output_texts)
+            sample_sources.extend(test_batch.non_tensor_batch.get('data_source', ['unknown'] * len(input_ids)))
             
-            if self.config.actor_rollout_ref.rollout.val_kwargs.n > 1:
-                test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n, interleave=True)
+            test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n, interleave=True)
             test_batch = test_batch.union(test_output_gen_batch)
 
             # evaluate using reward_function
             result = self.val_reward_fn(test_batch, return_dict=True)
             reward_tensor = result["reward_tensor"]
-            if "reward_extra_info" in result:
-                for key, lst in result["reward_extra_info"].items():
-                    reward_extra_infos_dict[key].extend(lst)
+            # if "reward_extra_info" in result:
+            #     for key, lst in result["reward_extra_info"].items():
+            #         reward_extra_infos_dict[key].extend(lst)
+
+            # Reshape from [batch_size*n_responses, seq_len] to [num_prompts, n_responses, seq_len]
+            reward_tensor = reward_tensor.view(len(input_ids), self.config.actor_rollout_ref.rollout.val_kwargs.n, -1)
 
             # Store scores
-            scores = reward_tensor.sum(-1).cpu().tolist()
-            sample_scores.extend(scores)
+            scores = reward_tensor.sum(-1).cpu().numpy()
+            sample_scores.append(scores)
 
-            data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
+            # sample_sources.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
+        
+        sample_scores = np.concatenate(sample_scores, axis=0)
+        print(f'sample_scores: {sample_scores.shape}')
+        print(f"sample_inputs: {len(sample_inputs)}")
+        print(f"sample_outputs: {len(sample_outputs)}")
+        print(f"sample_sources: {len(sample_sources)}")
 
-        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
-
-        for lst in reward_extra_infos_dict.values():
-            assert len(lst) == 0 or len(lst) == len(sample_scores)
-
-        data_sources = np.concatenate(data_source_lst, axis=0)
-
-        data_src2prompt2var2vals = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-        for sample_idx, data_source in enumerate(data_sources):
-            prompt = sample_inputs[sample_idx]
-
-            var2vals = data_src2prompt2var2vals[data_source][prompt]
-            var2vals["final_reward"].append(sample_scores[sample_idx])
-            for metric_name, metric_vals in reward_extra_infos_dict.items():
-                var2vals[metric_name].append(metric_vals[sample_idx])
-
-        data_src2prompt2var2metric = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
-        for data_source, prompt2var2vals in data_src2prompt2var2vals.items():
-            for prompt, var2vals in prompt2var2vals.items():
-                n_resps = len(var2vals["final_reward"])
-                preds = var2vals["pred"]
-                for var_name, var_vals in var2vals.items():
-                    if var_name in ["pred"]:
-                        continue
-                    metric = {}
-
-                    metric[f"mean@{n_resps}"] = np.mean(var_vals)
-                    metric[f"std@{n_resps}"] = np.std(var_vals)
-
-                    if n_resps > 1:
-                        ns = []
-                        n = 2
-                        while n < n_resps:
-                            ns.append(n)
-                            n *= 2
-                        ns.append(n_resps)
-
-                        if preds is not None:
-                            data = [{"val": val, "pred": pred} for val, pred in zip(var_vals, preds)]
-                        else:
-                            data = [{"val": val} for val in var_vals]
-
-                        for n in ns:
-
-                            (bon_mean, bon_std), (won_mean, won_std), (maj_n_mean, maj_n_std) = bootstrap_metric(
-                                data,
-                                subset_size=n,
-                                reduce_fns=[
-                                    lambda arr: np.max([d["val"] for d in arr]),
-                                    lambda arr: np.min([d["val"] for d in arr]),
-                                    partial(calc_maj_val, vote_key="pred", val_key="val")
-                                ])
-                            metric[f"best@{n}/mean"], metric[f"best@{n}/std"] = bon_mean, bon_std
-                            metric[f"worst@{n}/mean"], metric[f"worst@{n}/std"] = won_mean, won_std
-                            metric[f"maj@{n}/mean"], metric[f"maj@{n}/std"] = maj_n_mean, maj_n_std
-
-                    data_src2prompt2var2metric[data_source][prompt][var_name] = metric
-
-        data_src2var2metric2prompt_vals = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-        for data_source, prompt2var2metric in data_src2prompt2var2metric.items():
-            for prompt, var2metric in prompt2var2metric.items():
-                for var_name, metric in var2metric.items():
-                    for metric_name, metric_val in metric.items():
-                        data_src2var2metric2prompt_vals[data_source][var_name][metric_name].append(metric_val)
+        # repeat to match shape of outputs, then log
+        sample_inputs_repeated = np.repeat(sample_inputs, self.config.actor_rollout_ref.rollout.val_kwargs.n).tolist()
+        self._maybe_log_val_generations(inputs=sample_inputs_repeated, outputs=sample_outputs, scores=sample_scores)
 
         metric_dict = {}
-        for data_source, var2metric2prompt_vals in data_src2var2metric2prompt_vals.items():
-            for var_name, metric2prompt_vals in var2metric2prompt_vals.items():
-                for metric_name, prompt_vals in metric2prompt_vals.items():
-                    pfx = f"{data_source}/{var_name}/{metric_name}"
-                    metric_dict[pfx] = np.mean(prompt_vals)
+        for data_source in set(sample_sources):
+            source_mask = np.array(sample_sources) == data_source
+            source_scores = sample_scores[source_mask]
+            metric_dict[f'val/{data_source}/pass@1/mean@{sample_scores.shape[1]}'] = np.mean(source_scores)
+            metric_dict[f'val/{data_source}/pass@1/std@{sample_scores.shape[1]}'] = np.std(np.mean(source_scores, axis=1))
+            metric_dict[f'val/{data_source}/pass@{sample_scores.shape[1]}/mean'] = np.mean(np.any(source_scores > 0, axis=1))
+            metric_dict[f'val/{data_source}/pass@{sample_scores.shape[1]}/std'] = np.std(np.any(source_scores > 0, axis=1))
+        return metric_dict
+            
+            
+            
 
-        val_metric_dict = {f"val/{key}": value for key, value in metric_dict.items()}
-        return val_metric_dict
+        # for lst in reward_extra_infos_dict.values():
+        #     assert len(lst) == 0 or len(lst) == len(sample_scores)
+
+
+        # src2metric2val = {}
+        # for data_source in data_sources:
+        #     if data_source not in src2metric2val:
+        #         src2metric2val[data_source] = {}
+            
+
+        # data_src2prompt2var2vals = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        # for sample_idx, data_source in enumerate(data_sources):
+        #     prompt = sample_inputs[sample_idx]
+
+        #     var2vals = data_src2prompt2var2vals[data_source][prompt]
+        #     var2vals["final_reward"].append(sample_scores[sample_idx])
+        #     for metric_name, metric_vals in reward_extra_infos_dict.items():
+        #         var2vals[metric_name].append(metric_vals[sample_idx])
+
+        # data_src2prompt2var2metric = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+        # for data_source, prompt2var2vals in data_src2prompt2var2vals.items():
+        #     for prompt, var2vals in prompt2var2vals.items():
+        #         n_resps = len(var2vals["final_reward"])
+        #         preds = var2vals["pred"]
+        #         for var_name, var_vals in var2vals.items():
+        #             if var_name in ["pred"]:
+        #                 continue
+        #             metric = {}
+
+        #             metric[f"mean@{n_resps}"] = np.mean(var_vals)
+        #             metric[f"std@{n_resps}"] = np.std(var_vals)
+        #             metric[f"pass@{n_resps}"] = float(np.any(np.array(var_vals) > 0))
+        #             # if n_resps > 1:
+        #             # if n_resps > 1:
+        #             #     ns = []
+        #             #     n = 2
+        #             #     while n < n_resps:
+        #             #         ns.append(n)
+        #             #         n *= 2
+        #             #     ns.append(n_resps)
+
+        #             #     if preds is not None:
+        #             #         data = [{"val": val, "pred": pred} for val, pred in zip(var_vals, preds)]
+        #             #     else:
+        #             #         data = [{"val": val} for val in var_vals]
+
+        #             #     for n in ns:
+
+        #             #         (bon_mean, bon_std), (won_mean, won_std), (maj_n_mean, maj_n_std) = bootstrap_metric(
+        #             #             data,
+        #             #             subset_size=n,
+        #             #             reduce_fns=[
+        #             #                 lambda arr: np.max([d["val"] for d in arr]),
+        #             #                 lambda arr: np.min([d["val"] for d in arr]),
+        #             #                 partial(calc_maj_val, vote_key="pred", val_key="val")
+        #             #             ])
+        #             #         metric[f"best@{n}/mean"], metric[f"best@{n}/std"] = bon_mean, bon_std
+        #             #         metric[f"worst@{n}/mean"], metric[f"worst@{n}/std"] = won_mean, won_std
+        #             #         metric[f"maj@{n}/mean"], metric[f"maj@{n}/std"] = maj_n_mean, maj_n_std
+
+        #             data_src2prompt2var2metric[data_source][prompt][var_name] = metric
+
+        # data_src2var2metric2prompt_vals = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+        # for data_source, prompt2var2metric in data_src2prompt2var2metric.items():
+        #     for prompt, var2metric in prompt2var2metric.items():
+        #         for var_name, metric in var2metric.items():
+        #             for metric_name, metric_val in metric.items():
+        #                 data_src2var2metric2prompt_vals[data_source][var_name][metric_name].append(metric_val)
+
+        # metric_dict = {}
+        # for data_source, var2metric2prompt_vals in data_src2var2metric2prompt_vals.items():
+        #     for var_name, metric2prompt_vals in var2metric2prompt_vals.items():
+        #         for metric_name, prompt_vals in metric2prompt_vals.items():
+        #             pfx = f"{data_source}/{var_name}/{metric_name}"
+        #             metric_dict[pfx] = np.mean(prompt_vals)
+
+        # val_metric_dict = {f"val/{key}": value for key, value in metric_dict.items()}
+        # return val_metric_dict
 
     def init_workers(self):
         """Init resource pool and worker group"""
