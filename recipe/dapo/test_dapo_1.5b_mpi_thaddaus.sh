@@ -60,7 +60,7 @@ offload=False
 #     --working-dir "${WORKING_DIR}" \
 python3 -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
-    data.val_files=[/fast/pmayilvahanan/datasets/math/test.parquet,/fast/pmayilvahanan/datasets/math_500/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
+    data.val_files=[/fast/pmayilvahanan/datasets/gsm8k/test.parquet,/fast/pmayilvahanan/datasets/math_500/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
     data.prompt_key=prompt \
     data.truncation='left' \
     data.max_prompt_length=${max_prompt_length} \
