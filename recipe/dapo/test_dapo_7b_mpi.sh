@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-7B-Math-Test'
+exp_name='DAPO-Qwen2.5-7B-Math-DAPO'
 
 adv_estimator=grpo
 
@@ -19,13 +19,13 @@ overlong_penalty_factor=1.0
 enable_filter_groups=True
 filter_groups_metric=seq_final_reward
 fill_to_train_bsz=True
-train_prompt_bsz=32
+train_prompt_bsz=128
 multiplier=3
 gen_prompt_bsz=$((train_prompt_bsz * multiplier))
 train_prompt_mini_bsz=32
-train_micro_batch_size=8
-
-
+train_micro_batch_size=32
+val_batch_size=128
+val_kwargs_n=16
 n_resp_per_prompt=16
 use_token_level_loss=True
 
@@ -39,6 +39,9 @@ NNODES=1
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/fast/pmayilvahanan/"}
 MODEL_PATH=Qwen/Qwen2.5-Math-7B
+#MODEL_PATH=/fast/pmayilvahanan/post_training/verl_checkpoints/dapo/DAPO-Qwen2.5-7B-Math-DAPO/global_step_8
+resume_mode=auto
+resume_from_path=False
 CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/post_training/verl_checkpoints/dapo/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/dapo_math_17k/train.parquet"}
 
@@ -60,13 +63,14 @@ offload=False
 #     --working-dir "${WORKING_DIR}" \
 python3 -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
-    data.val_files=[/fast/pmayilvahanan/datasets/math/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
+    data.val_files=[/fast/pmayilvahanan/datasets/math_500/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
     data.prompt_key=prompt \
     data.truncation='left' \
     data.max_prompt_length=${max_prompt_length} \
     data.max_response_length=${max_response_length} \
     data.gen_batch_size=${gen_prompt_bsz} \
     data.train_batch_size=${train_prompt_bsz} \
+    data.val_batch_size=${val_batch_size} \
     data.truncation='left' \
     actor_rollout_ref.rollout.n=${n_resp_per_prompt} \
     actor_rollout_ref.actor.kl_loss_coef=${kl_loss_coef} \
@@ -101,7 +105,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_token_level_loss=${use_token_level_loss} \
     actor_rollout_ref.actor.use_token_level_loss=True \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.85 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=0.75 \
     actor_rollout_ref.rollout.log_prob_micro_batch_size=${infer_micro_batch_size} \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.enable_chunked_prefill=True \
@@ -109,7 +113,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_k="${val_top_k}" \
     actor_rollout_ref.rollout.val_kwargs.top_p=1.0\
     actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
-    actor_rollout_ref.rollout.val_kwargs.n=32 \
+    actor_rollout_ref.rollout.val_kwargs.n=${val_kwargs_n} \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.ref.log_prob_micro_batch_size=${infer_micro_batch_size} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
@@ -121,8 +125,9 @@ python3 -m verl.trainer.main_ppo \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes="${NNODES}" \
     +trainer.val_before_train=True \
-    trainer.test_freq=1 \
-    trainer.save_freq=2 \
-    trainer.total_epochs=1 \
+    trainer.test_freq=2 \
+    trainer.save_freq=7 \
+    trainer.total_epochs=2 \
     trainer.default_local_dir="${CKPTS_DIR}" \
-    trainer.resume_mode=disable
+    trainer.resume_mode=${resume_mode} \
+    trainer.resume_from_path=${resume_from_path}
