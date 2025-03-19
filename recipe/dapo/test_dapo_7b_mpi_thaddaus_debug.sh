@@ -2,7 +2,7 @@
 set -euxo pipefail
 
 project_name='DAPO'
-exp_name='DAPO-Qwen2.5-7B-Math-Test-Thaddaus'
+exp_name='DAPO-Qwen2.5-1.5B-Instruct-Debug'
 
 adv_estimator=grpo
 
@@ -26,7 +26,7 @@ train_prompt_mini_bsz=32
 train_micro_batch_size=8
 
 
-n_resp_per_prompt=16
+n_resp_per_prompt=5
 use_token_level_loss=True
 
 # Ray
@@ -38,14 +38,14 @@ NNODES=1
 
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/fast/pmayilvahanan/"}
-MODEL_PATH=Qwen/Qwen2.5-Math-7B
+MODEL_PATH=Qwen/Qwen2.5-1.5B-Instruct
 CKPTS_DIR=${CKPTS_DIR:-"/fast/twiedemer/verl_checkpoints/dapo/${exp_name}"}
-TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/dapo_math_17k/train.parquet"}
+TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/gsm8k/train.parquet"}
 
 # Algorithm
 ## Train
-max_prompt_length=$((1024 * 2))
-max_response_length=$((1024 * 2))
+max_prompt_length=$((1024 * 1))
+max_response_length=$((1024 * 1))
 ## Validation
 val_top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 
@@ -60,7 +60,7 @@ offload=False
 #     --working-dir "${WORKING_DIR}" \
 python3 -m verl.trainer.main_ppo \
     data.train_files="${TRAIN_FILE}" \
-    data.val_files=[/fast/pmayilvahanan/datasets/math/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
+    data.val_files=[/fast/pmayilvahanan/datasets/math_500/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet] \
     data.prompt_key=prompt \
     data.truncation='left' \
     data.max_prompt_length=${max_prompt_length} \
@@ -109,7 +109,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_k="${val_top_k}" \
     actor_rollout_ref.rollout.val_kwargs.top_p=1.0\
     actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
-    actor_rollout_ref.rollout.val_kwargs.n=32 \
+    actor_rollout_ref.rollout.val_kwargs.n=5 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.ref.log_prob_micro_batch_size=${infer_micro_batch_size} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
@@ -121,7 +121,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=4 \
     trainer.nnodes="${NNODES}" \
     +trainer.val_before_train=True \
     trainer.test_freq=1 \
