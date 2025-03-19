@@ -17,13 +17,16 @@ overlong_buffer_len=512
 overlong_penalty_factor=1.0
 
 enable_filter_groups=True
-filter_groups_metric=acc
+filter_groups_metric=seq_final_reward
 fill_to_train_bsz=True
-train_prompt_bsz=512
-gen_prompt_bsz=$((train_prompt_bsz * 3))
+train_prompt_bsz=32
+multiplier=3
+gen_prompt_bsz=$((train_prompt_bsz * multiplier))
 train_prompt_mini_bsz=32
-n_resp_per_prompt=16
+train_micro_batch_size=8
 
+
+n_resp_per_prompt=16
 use_token_level_loss=True
 
 # Ray
@@ -38,7 +41,6 @@ RAY_DATA_HOME=${RAY_DATA_HOME:-"/fast/pmayilvahanan/"}
 MODEL_PATH=Qwen/Qwen2.5-Math-7B
 CKPTS_DIR=${CKPTS_DIR:-"/fast/twiedemer/verl_checkpoints/dapo/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/dapo_math_17k/train.parquet"}
-#TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/datasets/aime_2024/test.parquet"}
 
 # Algorithm
 ## Train
@@ -107,22 +109,19 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_k="${val_top_k}" \
     actor_rollout_ref.rollout.val_kwargs.top_p=1.0\
     actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
-    actor_rollout_ref.rollout.val_kwargs.n=1 \
+    actor_rollout_ref.rollout.val_kwargs.n=32 \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.ref.log_prob_micro_batch_size=${infer_micro_batch_size} \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=1 \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=-1 \
-    custom_reward_function.overlong_buffer.enable=${enable_overlong_buffer} \
-    custom_reward_function.overlong_buffer.len=${overlong_buffer_len} \
-    custom_reward_function.overlong_buffer.penalty_factor=${overlong_penalty_factor} \
     trainer.logger=['console','wandb'] \
     trainer.project_name="${project_name}" \
     trainer.experiment_name="${exp_name}" \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes="${NNODES}" \
     +trainer.val_before_train=True \
-    trainer.test_freq=2 \
+    trainer.test_freq=1 \
     trainer.save_freq=2 \
     trainer.total_epochs=1 \
     trainer.default_local_dir="${CKPTS_DIR}" \
