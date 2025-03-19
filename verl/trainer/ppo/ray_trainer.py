@@ -595,34 +595,39 @@ class RayPPOTrainer(object):
                 n_resps = len(var2vals["final_reward"])
                 preds = var2vals["pred"]
                 for var_name, var_vals in var2vals.items():
-                    if var_name in ["pred", "final_reward"]:
+                    if var_name in ["pred"]:
                         continue
                     metric = {}
 
                     metric[f"mean@{n_resps}"] = np.mean(var_vals)
                     metric[f"std@{n_resps}"] = np.std(var_vals)
 
-                    ns = []
-                    n = 2
-                    while n < n_resps:
-                        ns.append(n)
-                        n *= 2
-                    ns.append(n_resps)
+                    if n_resps > 1:
+                        ns = []
+                        n = 2
+                        while n < n_resps:
+                            ns.append(n)
+                            n *= 2
+                        ns.append(n_resps)
 
-                    data = [{"val": val, "pred": pred} for val, pred in zip(var_vals, preds)]
-                    for n in ns:
+                        if preds is not None:
+                            data = [{"val": val, "pred": pred} for val, pred in zip(var_vals, preds)]
+                        else:
+                            data = [{"val": val} for val in var_vals]
 
-                        (bon_mean, bon_std), (won_mean, won_std), (maj_n_mean, maj_n_std) = bootstrap_metric(
-                            data,
-                            subset_size=n,
-                            reduce_fns=[
-                                lambda arr: np.max([d["val"] for d in arr]),
-                                lambda arr: np.min([d["val"] for d in arr]),
-                                partial(calc_maj_val, vote_key="pred", val_key="val")
-                            ])
-                        metric[f"best@{n}/mean"], metric[f"best@{n}/std"] = bon_mean, bon_std
-                        metric[f"worst@{n}/mean"], metric[f"worst@{n}/std"] = won_mean, won_std
-                        metric[f"maj@{n}/mean"], metric[f"maj@{n}/std"] = maj_n_mean, maj_n_std
+                        for n in ns:
+
+                            (bon_mean, bon_std), (won_mean, won_std), (maj_n_mean, maj_n_std) = bootstrap_metric(
+                                data,
+                                subset_size=n,
+                                reduce_fns=[
+                                    lambda arr: np.max([d["val"] for d in arr]),
+                                    lambda arr: np.min([d["val"] for d in arr]),
+                                    partial(calc_maj_val, vote_key="pred", val_key="val")
+                                ])
+                            metric[f"best@{n}/mean"], metric[f"best@{n}/std"] = bon_mean, bon_std
+                            metric[f"worst@{n}/mean"], metric[f"worst@{n}/std"] = won_mean, won_std
+                            metric[f"maj@{n}/mean"], metric[f"maj@{n}/std"] = maj_n_mean, maj_n_std
 
                     data_src2prompt2var2metric[data_source][prompt][var_name] = metric
 
@@ -1003,6 +1008,7 @@ class RayPPOTrainer(object):
                         else:
                             batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
 
+                    # TODO: this should probably be skipped when algorithm.only_positive_advantages.enable is True
                     if self.config.algorithm.filter_groups.enable:
                         filter_metric_dict = {}
                         metric_name = self.config.algorithm.filter_groups.metric
