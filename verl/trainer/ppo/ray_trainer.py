@@ -44,6 +44,8 @@ from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
 from verl.utils.tracking import ValidationGenerationsLogger
 from torch.utils.data import RandomSampler, SequentialSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
+from tqdm import tqdm
+
 
 WorkerType = Type[Worker]
 
@@ -307,6 +309,16 @@ class RayPPOTrainer(object):
             self.use_critic = False
         else:
             raise NotImplementedError
+        
+        # Initialize advantage tracking storage
+        self.advantage_tracking_enabled = getattr(self.config.trainer, 'track_advantages', False)
+        self.advantage_tracking_path = getattr(self.config.trainer, 'track_advantages_path', 
+                                                os.path.join(self.config.trainer.default_local_dir, 'advantage_tracking'))
+        os.makedirs(self.advantage_tracking_path, exist_ok=True)
+
+
+        if self.advantage_tracking_enabled:
+            self.advantage_tracking_freq = getattr(self.config.trainer, 'track_advantages_freq', 1)  # Default: every step
 
         self._validate_config()
         self._create_dataloader()
@@ -412,7 +424,8 @@ class RayPPOTrainer(object):
 
         print("[validate_config] All configuration checks passed successfully!")
 
-    def _create_dataloader(self):
+    def _create_dataloader(self, set_to_self=True, shuffle=None):
+        shuffle = self.config.data.shuffle if shuffle is None else shuffle
         # TODO: we have to make sure the batch size is divisible by the dp size
         self.train_dataset = RLHFDataset(parquet_files=self.config.data.train_files,
                                          tokenizer=self.tokenizer,
@@ -425,7 +438,7 @@ class RayPPOTrainer(object):
                                          truncation='error',
                                          filter_overlong_prompts=self.config.data.filter_overlong_prompts)
         # use sampler for better ckpt resume
-        if self.config.data.shuffle:
+        if shuffle:
             train_dataloader_generator = torch.Generator()
             train_dataloader_generator.manual_seed(self.config.data.get('seed', 1))
             sampler = RandomSampler(data_source=self.train_dataset, generator=train_dataloader_generator)
@@ -484,6 +497,14 @@ class RayPPOTrainer(object):
         with open_dict(self.config):
             self.config.actor_rollout_ref.actor.optim.total_training_steps = total_training_steps
             self.config.critic.optim.total_training_steps = total_training_steps
+
+        if set_to_self:
+            self.train_dataloader = self.train_dataloader
+            self.val_dataloader = self.val_dataloader
+            self.train_dataset = self.train_dataset
+            self.val_dataset = self.val_dataset
+        else:
+            return self.train_dataloader, self.val_dataloader
 
     def _maybe_log_val_generations(self, inputs, outputs, scores):
         """Log a table of validation samples to the configured logger (wandb or swanlab)"""
@@ -585,9 +606,6 @@ class RayPPOTrainer(object):
         
         sample_scores = np.concatenate(sample_scores, axis=0)
         print(f'sample_scores: {sample_scores.shape}')
-        print(f"sample_inputs: {len(sample_inputs)}")
-        print(f"sample_outputs: {len(sample_outputs)}")
-        print(f"sample_sources: {len(sample_sources)}")
 
         # repeat to match shape of outputs, then log
         sample_inputs_repeated = np.repeat(sample_inputs, self.config.actor_rollout_ref.rollout.val_kwargs.n).tolist()
@@ -854,80 +872,243 @@ class RayPPOTrainer(object):
                                                     partitions=global_partition_lst,
                                                     prefix=logging_prefix)
         metrics.update(global_balance_stats)
-
-    def filter_positive_advantages(self, batch: DataProto) -> DataProto:
-        """
-        Filter a batch to keep only rows with positive advantages.
-        Ensures resulting batch size is divisible by world_size for distributed training.
+    
+    def _compute_and_save_dataset_advantages(self, step, dataset_type='train', get_gt_log_prob=False, return_entropy=False):
+        """Compute and save advantages for the entire dataset. This function is also used  to compute advantage variance for sampler weights
         
         Args:
-            batch: DataProto containing the batch with computed advantages
-            
-        Returns:
-            Tuple of (DataProto containing only rows with positive advantages, metrics dict)
+            step: Current step number (-1 means before training)
+            dataset_type: 'train' or 'val'
+            save: Whether to save the advantages
+        
+        Returns (optional): advantage variance for sampler weights
         """
-        # Extract advantages
-        advantages = batch.batch['advantages']  # shape: [batch_size * rollout, max_response_length]
-        responses = batch.batch['responses']
-        response_length = responses.size(-1)
-        attention_mask = batch.batch['attention_mask']
-        response_mask = attention_mask[:, -response_length:]
+        # TODO: this probably doesnt work for PPO or the likes. Need to uncomment few lines below to potentially fix (also need to change scores, etc).
         
-        # For most algorithms, advantages have the same value for all valid tokens in each response
-        # So we can check just the first token's advantage for each sample
-        # And mask it with response_mask to ignore padding tokens
+        print(f"Computing advantages for entire {dataset_type} dataset (step {step})...")
+
+        # important args for advantage tracking
+        if self.advantage_tracking_enabled:
+            n_rollouts = self.config.actor_rollout_ref.rollout.n if self.config.actor_rollout_ref.rollout.n_advantage_tracking is None else self.config.actor_rollout_ref.rollout.n_advantage_tracking
+        else:
+            n_rollouts = self.config.actor_rollout_ref.rollout.n
         
-        # Get the first valid token advantage for each sample
-        first_valid_adv = advantages.clone()
-        first_valid_adv[~response_mask] = float('-inf')  # Set padding positions to -inf
+        shuffle = False
+        # Fix the division by zero error by checking if n_rollouts equals rollout.n
+        if n_rollouts == self.config.actor_rollout_ref.rollout.n:
+            batch_size = self.config.data.train_batch_size
+        else:
+            batch_size = self.config.data.train_batch_size // (n_rollouts // self.config.actor_rollout_ref.rollout.n)
         
-        # For each row, get maximum advantage value (will be the first valid token's advantage)
-        row_max_adv, _ = first_valid_adv.max(dim=1)  # [batch_size * rollout]
+        # TODO creating dataloader again is inefficient. But doing it anyway because I want advantage computation for same samples. 
+        # Create and choose the appropriate dataloader
+        train_dataloader, val_dataloader = self._create_dataloader(set_to_self=False, shuffle=shuffle)
+        dataloader = train_dataloader if dataset_type == 'train' else val_dataloader
         
-        # Create a mask for rows with positive advantages
-        positive_adv_mask = row_max_adv > 0  # [batch_size * rollout]
+        # Storage for all advantages
+        all_advantages = defaultdict(list)
         
-        # Get indices where advantages are positive
-        positive_indices = torch.nonzero(positive_adv_mask).squeeze(-1)
-        
-        # Check if we have any positive advantages
-        positive_count = len(positive_indices)
-        if positive_count == 0:
-            print("Warning: No positive advantages found in batch. Returning original batch.")
-            return batch, {'positive_advantages_ratio': 0.0}
-        
-        # Ensure the number of positive samples is divisible by world_size
+        # Get world size for batch size adjustment
         world_size = self.actor_rollout_wg.world_size
-        if positive_count % world_size != 0:
-            # Calculate how many samples to keep (must be divisible by world_size)
-            keep_count = (positive_count // world_size) * world_size
-            if keep_count == 0:
-                print("Warning: Not enough positive advantages to create a batch divisible by world_size. Returning original batch.")
-                return batch, {'positive_advantages_ratio': 0.0}
+        
+        # Disable gradient computation for efficiency
+        with torch.no_grad():
+            for batch_idx, batch_dict in enumerate(tqdm(dataloader, desc=f"Computing {dataset_type} advantages")):
+                # Convert to DataProto
+                batch = DataProto.from_single_dict(batch_dict)
+                
+                # Skip empty batches
+                if len(batch.batch) == 0:
+                    continue
+                
+                # Ensure batch size is divisible by world_size by truncating extra samples
+                batch_size = len(batch.batch)
+                if batch_size % world_size != 0:
+                    # Calculate how many samples to keep (truncate the rest)
+                    keep_size = (batch_size // world_size) * world_size
+                    
+                    # Use the reorder method to keep only the first keep_size samples
+                    indices = torch.arange(keep_size)
+                    batch.reorder(indices)
+                    
+                    print(f"Truncated batch from {batch_size} to {keep_size} samples to ensure divisibility by {world_size}")
+                
+                # apparently this is needed for the advantage computation
+
+                batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))],
+                                                            dtype=object)
+                # Add unique indices are not present
+                if 'index' not in batch.non_tensor_batch:
+                    batch.non_tensor_batch['index'] = np.array([f"{dataset_type}_{batch_idx}_{i}" 
+                                                             for i in range(len(batch.batch))], dtype=object)
+                
+                # get ground truth log prob
+                if get_gt_log_prob:
+                    with torch.no_grad():
+                        # Clone the original data to avoid interfering with advantage logic
+                        gt_data = deepcopy(batch)
+                        gt_answers = []
+                        gt_data.batch['input_ids'] = torch.zeros_like(gt_data.batch['input_ids'])
+                        # We'll replace "responses" in gt_data with the ground-truth answer per sample
+                        for i, info in enumerate(gt_data.non_tensor_batch['extra_info']):
+                            ground_truth_answer = info['answer']
+                            # Encode the ground-truth answer (strip special tokens as needed)
+                            answer_ids = self.tokenizer.encode(ground_truth_answer, add_special_tokens=False)
+                            # Convert to tensor and place it into the same shape as "responses"
+                            ans_t = torch.tensor(answer_ids, dtype=torch.long, device=gt_data.batch['input_ids'].device)
+                            gt_data.batch['input_ids'][i, :len(ans_t)] = ans_t
+                            # Update attention_mask for the newly assigned tokens
+                            gt_data.batch['attention_mask'][i, -(len(ans_t)):] = 1
+                            gt_answers.append(ground_truth_answer)
+
+                        # Now compute the log_prob of these ground-truth answers with the current policy
+                        # "actor" or "actor_rollout_ref" might differ based on your usage
+                        gt_data.batch['responses'] = gt_data.batch['input_ids']
+                        if return_entropy:
+                            entropy, gt_log_prob = self.actor_rollout_wg._forward_micro_batch(gt_data)
+                            batch.batch['gt_entropy'] = entropy
+                        else:
+                            gt_log_prob = self.actor_rollout_wg.compute_log_prob(gt_data)
+
+                        # Save it alongside the rest of the data
+                        batch.batch['answer_ids'] = gt_data.batch['input_ids']
+                        batch.non_tensor_batch['gt_answers'] = np.array(gt_answers, dtype=object)
+                        batch.batch['gt_log_prob'] = gt_log_prob.batch['old_log_probs']
+                
+                # Generate responses using the current policy
+                gen_batch = batch.pop(batch_keys=['input_ids', 'attention_mask', 'position_ids'])
+                if n_rollouts // self.config.actor_rollout_ref.rollout.n > 1: # we need this only for saving and not for sampler weights
+                    #TODO: This works but it's super ugly. Better to recreate a actor with larger n and load checkpoint
+                    gen_batch_output = []
+                    for i in range(n_rollouts // self.config.actor_rollout_ref.rollout.n):
+                        gen_batch_output.append(self.actor_rollout_wg.generate_sequences(gen_batch))
+                    gen_batch_output = DataProto.concat(gen_batch_output)
+
+                    batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                    batch = batch.repeat(repeat_times=n_rollouts // self.config.actor_rollout_ref.rollout.n, interleave=False)
+                    batch = batch.union(gen_batch_output)
+                else:
+                    gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                    batch = batch.repeat(repeat_times=n_rollouts, interleave=True)
+                    batch = batch.union(gen_batch_output)
+              
+                # Compute rewards
+                if self.use_rm:
+                    reward_tensor = self.rm_wg.compute_rm_score(batch)
+                    batch = batch.union(reward_tensor)
+                
+                reward_tensor = self.reward_fn(batch)
+                batch.batch['token_level_scores'] = reward_tensor
+                
+                # Apply KL penalty if needed
+                if not self.config.actor_rollout_ref.actor.get('use_kl_loss', False) and self.use_reference_policy:
+                    batch, _ = apply_kl_penalty(batch,
+                                              kl_ctrl=self.kl_ctrl,
+                                              kl_penalty=self.config.algorithm.kl_penalty)
+                else:
+                    batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
+                
+                # Compute advantages
+                batch = compute_advantage(batch,
+                                        adv_estimator=self.config.algorithm.adv_estimator,
+                                        gamma=self.config.algorithm.gamma,
+                                        lam=self.config.algorithm.lam,
+                                        num_repeat=1)
+
+                # get log prob for rollouts
+                if return_entropy:
+                    with torch.no_grad():
+                        entropy, rollout_log_prob = self.actor_rollout_wg._forward_micro_batch(batch)
+                        batch.batch['rollout_entropy'] = entropy
+                        batch.batch['rollout_log_prob'] = rollout_log_prob
+                else:
+                    rollout_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                    batch.batch['rollout_log_prob'] = rollout_log_prob.batch['old_log_probs']
+                
+                
+                # Extract and store the data
+                advantages = batch.batch['advantages'].detach().cpu()
+                sample_ids = batch.non_tensor_batch['index']
+                input_ids = batch.batch['input_ids'].detach().cpu()
+                response_ids = batch.batch['responses'].detach().cpu()
+                rollout_log_probs = batch.batch['rollout_log_prob'].detach().cpu()
+                rollout_entropies = batch.batch['rollout_entropy'].detach().cpu() if return_entropy else None
+                # get ground truth log prob
+                if get_gt_log_prob:
+                    answer_ids = batch.batch['answer_ids'].detach().cpu()
+                    gt_log_probs = batch.batch['gt_log_prob'].detach().cpu()
+                    gt_answers = batch.non_tensor_batch['gt_answers']
+                # get token level scores (this also might change for something that is not grpo)
+                if dataset_type == 'train':
+                    batch.batch['token_level_rewards'] = self.reward_fn(batch)
+                else:
+                    batch.batch['token_level_rewards'] = self.val_reward_fn(batch)
+                token_level_rewards = batch.batch['token_level_rewards'].detach().cpu()
+
+                # not computing this for now
+                # attention_mask = batch.batch['attention_mask'].detach().cpu()
+                # response_length = response_ids.size(1)
+
+    
+                #response_mask = attention_mask[:, -response_length:]
+                #token_rewards = batch.batch['token_level_rewards'].detach().cpu() if 'token_level_rewards' in batch.batch else None
+                
+                # Store data for each sample
+                for i in range(len(sample_ids)):
+                    sample_id = sample_ids[i]
+                    
+                    # Decode text for better analysis
+                    prompt_text = self.tokenizer.decode(input_ids[i], skip_special_tokens=True)
+                    response_text = self.tokenizer.decode(response_ids[i], skip_special_tokens=True)
+
+                    if get_gt_log_prob:
+                        gt_answer = gt_answers[i]
+                        gt_log_prob = gt_log_probs[i]
+                        gt_answer_ids = answer_ids[i]
+                        rollout_log_prob = rollout_log_probs[i]
+
+                    
+                        all_advantages[sample_id].append({
+                            'prompt': prompt_text,
+                            'response': response_text,
+                            'gt_answer': gt_answer,
+                            'gt_log_prob': gt_log_prob,
+                            'gt_answer_ids': gt_answer_ids,
+                            'advantage': advantages[i].numpy()[0],
+                            'score': token_level_rewards[i].numpy().sum(),
+                            'rollout_log_prob': rollout_log_prob,
+                            'rollout_entropy': rollout_entropies[i] if return_entropy else None
+                        })
+                    else:
+                        all_advantages[sample_id].append({
+                            'prompt': prompt_text,
+                            'response': response_text,
+                            'advantage': advantages[i].numpy()[0],
+                            'score': token_level_rewards[i].numpy().sum()
+                        })
+                        
+                    # computing entire response mask and token rewards and advantage is unnecessary and only useful if we have token level / process level rewards
+                    # all_advantages[sample_id].append({
+                    #     'prompt': prompt_text,
+                    #     'response': response_text,
+                    #     'advantage': advantages[i].numpy(),
+                    #     'response_mask': response_mask[i].numpy(),
+                    #     'token_reward': token_rewards[i].numpy() if token_rewards is not None else None
+                    # })
+                    # Save the collected advantages
+        step_label = "pre_training" if step == -1 else f"step_{step}"
+        filename = f'advantages_{dataset_type}_{step_label}.pt'
+        filepath = os.path.join(self.advantage_tracking_path, filename)
+        advantage_data = {
+                'step': step,
+                'dataset_type': dataset_type,
+                'samples': dict(all_advantages)
+            }
             
-            # Truncate indices to ensure divisibility
-            positive_indices = positive_indices[:keep_count]
-            positive_count = keep_count
-            print(f"Truncated positive samples from {len(positive_adv_mask.nonzero())} to {positive_count} to ensure divisibility by world_size={world_size}")
+        torch.save(advantage_data, filepath)
+        print(f"Saved {dataset_type} advantage data to {filepath}")
         
-        print(f"Filtering batch: keeping {positive_count}/{len(positive_adv_mask)} rows with positive advantages.")
-        metrics = {'positive_advantages_ratio': positive_count/len(positive_adv_mask)}
-        
-        # Filter tensor batch using the indices
-        filtered_tensor_batch = batch.batch[positive_indices]
-        
-        # Filter non-tensor batch
-        filtered_non_tensor_batch = {}
-        positive_indices_np = positive_indices.cpu().numpy()
-        for key, val in batch.non_tensor_batch.items():
-            filtered_non_tensor_batch[key] = val[positive_indices_np]
-        
-        # Create new DataProto with filtered data
-        return DataProto(
-            batch=filtered_tensor_batch,
-            non_tensor_batch=filtered_non_tensor_batch,
-            meta_info=batch.meta_info
-        ), metrics
+
 
     def fit(self):
         """
@@ -954,6 +1135,12 @@ class RayPPOTrainer(object):
             val_metrics = self._validate()
             pprint(f'Initial validation metrics: {val_metrics}')
             logger.log(data=val_metrics, step=self.global_steps)
+
+            if self.advantage_tracking_enabled:
+                step_init = self.config.trainer.get('step_init', -1)
+                self._compute_and_save_dataset_advantages(step=step_init, dataset_type='val', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
+                self._compute_and_save_dataset_advantages(step=step_init, dataset_type='train', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
+
             if self.config.trainer.get('val_only', False):
                 return
 
@@ -962,6 +1149,9 @@ class RayPPOTrainer(object):
         total_seen_samples = 0
         last_val_metrics = None
         steps_per_epoch = self.total_training_steps // self.config.trainer.total_epochs
+
+        
+
 
         while self.global_steps < self.total_training_steps:
             epoch = self.global_steps // steps_per_epoch
@@ -1138,16 +1328,6 @@ class RayPPOTrainer(object):
                                                   gamma=self.config.algorithm.gamma,
                                                   lam=self.config.algorithm.lam,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
-                    
-                    if self.config.algorithm.only_positive_advantages.enable:
-                        print(f"batch shape before filtering: {batch.batch['advantages'].shape}")
-                        batch, filter_metrics = self.filter_positive_advantages(batch)
-                        print(f"batch shape after filtering: {batch.batch['advantages'].shape}")
-                        # skip batch if no positive advantages
-                        if filter_metrics['positive_advantages_ratio'] == 0.0:
-                            print(f'Skipping batch with no positive advantages')
-                            continue
-                        metrics.update(filter_metrics)
 
 
                     total_seen_samples += len(batch.batch)
@@ -1191,6 +1371,15 @@ class RayPPOTrainer(object):
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
+
+                # Compute advantages at the end of the epoch if needed
+                if self.advantage_tracking_enabled and (
+                    epoch == self.config.trainer.total_epochs - 1 or  # Last epoch
+                    self.advantage_tracking_freq > 0 and (self.global_steps % self.advantage_tracking_freq == 0)  # By frequency
+                ):
+                    self._compute_and_save_dataset_advantages(step=self.global_steps, dataset_type='train', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
+                    self._compute_and_save_dataset_advantages(step=self.global_steps, dataset_type='val', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
+
 
                 if is_last_step:
                     pprint(f'Final validation metrics: {last_val_metrics}')
