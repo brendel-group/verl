@@ -95,9 +95,12 @@ class FSDPSFTTrainer(object):
         # Set sequence parallel size
         self.config.ulysses_sequence_parallel_size = getattr(self.config, 'ulysses_sequence_parallel_size', 1)
         self.use_remove_padding = getattr(self.config, 'use_remove_padding', False)
+        # Flag to use likelihood-based loss instead of cross entropy
+        self.use_likelihood_loss = getattr(self.config.optim, 'use_likelihood_loss', False)
         if self.device_mesh.get_rank() == 0:
             print(f'Using sequence parallel size: {self.config.ulysses_sequence_parallel_size}')
             print(f'Using remove padding: {self.use_remove_padding}')
+            print(f'Using likelihood loss: {self.use_likelihood_loss}')
 
         self._build_dataloader()
         # build model
@@ -128,16 +131,29 @@ class FSDPSFTTrainer(object):
                                         response_key=config.data.response_key,
                                         response_dict_keys=config.data.get('response_dict_keys', None),
                                         max_length=config.data.max_length,
-                                        truncation=config.data.truncation)
-        self.val_dataset = SFTDataset(parquet_files=config.data.val_files,
+                                        truncation=config.data.truncation,
+                                        weight_key=config.data.weight_key)
+        
+        try:
+            self.val_dataset = SFTDataset(parquet_files=config.data.val_files,
                                       tokenizer=self.tokenizer,
                                       prompt_key=config.data.prompt_key,
                                       prompt_dict_keys=config.data.get('prompt_dict_keys', None),
                                       response_key=config.data.response_key,
                                       response_dict_keys=config.data.get('response_dict_keys', None),
                                       max_length=config.data.max_length,
-                                      truncation=config.data.truncation)
-
+                                      truncation=config.data.truncation,
+                                      weight_key=config.data.weight_key)
+        except:
+             self.val_dataset = SFTDataset(parquet_files=config.data.val_files,
+                                      tokenizer=self.tokenizer,
+                                      prompt_key=config.data.prompt_key,
+                                      prompt_dict_keys=config.data.get('prompt_dict_keys', None),
+                                      response_key=config.data.response_key,
+                                      response_dict_keys=config.data.get('response_dict_keys', None),
+                                      max_length=config.data.max_length,
+                                      truncation=config.data.truncation,
+                                      weight_key=None)
         # build dataloader
         # Use data parallel rank and size instead of global rank and world size
 
@@ -167,7 +183,7 @@ class FSDPSFTTrainer(object):
                                            drop_last=True)
 
         self.val_sampler = DistributedSampler(self.val_dataset,
-                                              shuffle=False,
+                                              shuffle=True,
                                               num_replicas=world_size,
                                               rank=rank,
                                               drop_last=True)
@@ -204,8 +220,7 @@ class FSDPSFTTrainer(object):
             apply_monkey_patch(config, verbose=True)
 
         # This may be very large
-        init_context = get_init_weight_context_manager(use_meta_tensor=not config.tie_word_embeddings,
-                                                       mesh=self.device_mesh)
+        init_context = get_init_weight_context_manager(use_meta_tensor=not config.tie_word_embeddings)
 
         with init_context():
             self.model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(local_model_path,
@@ -294,7 +309,13 @@ class FSDPSFTTrainer(object):
         attention_mask = batch['attention_mask'].cuda()
         position_ids = batch['position_ids'].cuda()
         loss_mask = batch.pop('loss_mask')[:, :-1].reshape(-1).cuda()
-        loss_fct = nn.CrossEntropyLoss(reduction='none')
+        
+        # Use either cross entropy or likelihood-based loss based on flag
+        if not self.use_likelihood_loss:
+            loss_fct = nn.CrossEntropyLoss(reduction='none')
+        else:
+            # For likelihood, we'll implement a custom loss function below
+            loss_fct = None
 
         # Context manager for sequence parallel if needed
         context = self.sharding_manager if use_sp else nullcontext()
@@ -316,8 +337,27 @@ class FSDPSFTTrainer(object):
                     shift_labels = shift_labels.view(-1)
                     # Enable model parallelism
                     shift_labels = shift_labels.to(shift_logits.device)
-                    loss = loss_fct(shift_logits, shift_labels)
+                    
+                    if not self.use_likelihood_loss:
+                        # Original cross entropy loss
+                        loss = loss_fct(shift_logits, shift_labels)
+                    else:
+                        # Likelihood-based loss: directly maximize probability of correct token
+                        # Get probabilities using softmax
+                        probs = torch.softmax(shift_logits, dim=-1)
+                        # Get the probability of the target token for each position
+                        target_probs = torch.gather(probs, dim=1, index=shift_labels.unsqueeze(-1)).squeeze(-1)
+                        target_probs = torch.clamp(target_probs, min=0.1, max=0.9)
+                        print(f'probs shape: {probs.shape}')
+                        print(f'probs: {probs}')
+                        print(f'input_ids_rmpad_rolled shape: {input_ids_rmpad_rolled.shape}')
+                        print(f'target_probs shape: {target_probs.shape}')
+                        print(f'target_probs: {target_probs}')
+                        # Loss is 1 - probability (to minimize)
+                        loss = 1.0 - target_probs
+                    
                     loss = loss * loss_mask.to(loss.device)
+                    
                 else:
                     # IMPORTANT: We have a big assumption here, so we can shard the SAME sequence across SP ranks
                     # i.e., each GPU has <1 sequence, and each SP group has 1 sequence
@@ -354,7 +394,23 @@ class FSDPSFTTrainer(object):
                     # Compute loss locally then aggregate
                     logits_rmpad = output.logits.squeeze(0)
                     input_ids_rmpad_rolled = input_ids_rmpad_rolled.to(logits_rmpad.device)
-                    loss = loss_fct(logits_rmpad, input_ids_rmpad_rolled)
+                    
+                    if not self.use_likelihood_loss:
+                        # Original cross entropy loss
+                        loss = loss_fct(logits_rmpad, input_ids_rmpad_rolled)
+                    else:
+                        # Likelihood-based loss
+                        probs = torch.softmax(logits_rmpad, dim=-1)
+                        target_probs = torch.gather(probs, dim=1, 
+                                                  index=input_ids_rmpad_rolled.unsqueeze(-1)).squeeze(-1)
+                        print(f'probs shape: {probs.shape}')
+                        print(f'probs: {probs}')
+                        print(f'input_ids_rmpad_rolled shape: {input_ids_rmpad_rolled.shape}')
+                        print(f'target_probs shape: {target_probs.shape}')
+                        print(f'target_probs: {target_probs}')
+                        target_probs = torch.clamp(target_probs, min=1e-6, max=1.0-1e-6)
+                        loss = 1.0 - target_probs
+                    
                     # Gather and unpad for sequence parallelism
                     loss = gather_outpus_and_unpad(loss, gather_dim=0, unpad_dim=0, padding_size=pad_size)
 
@@ -368,7 +424,7 @@ class FSDPSFTTrainer(object):
                     loss_mask = loss_mask.to(full_loss.device)
                     loss = full_loss * loss_mask
 
-                valid_token_this_rank = torch.sum(loss_mask)
+                valid_token_this_rank = torch.sum(torch.abs(loss_mask))
 
                 if self.config.data.balance_dp_token:
                     torch.distributed.all_reduce(valid_token_this_rank)
@@ -397,8 +453,10 @@ class FSDPSFTTrainer(object):
         for micro_batch in micro_batches:
             loss = self._compute_loss_and_backward(batch=micro_batch) / n_micro_batches
             step_loss += loss.item()
-
-        self.fsdp_model.clip_grad_norm_(max_norm=self.config.optim.clip_grad)
+        
+        grad_norm = self.fsdp_model.clip_grad_norm_(max_norm=self.config.optim.clip_grad)
+        print(f'Grad norm: {grad_norm}')
+        print(f'type of grad_norm: {type(grad_norm)}')
 
         log_gpu_memory_usage('Before optimizer step', logger=logger)
 
@@ -415,7 +473,7 @@ class FSDPSFTTrainer(object):
 
         step_loss = torch.tensor(step_loss).cuda()
         torch.distributed.all_reduce(step_loss, op=torch.distributed.ReduceOp.AVG)
-        return {'train/loss': step_loss.detach().item(), 'train/lr(1e-3)': lr * 1e3}
+        return {'train/loss': step_loss.detach().item(), 'train/lr(1e-3)': lr * 1e3, 'train/grad_norm': grad_norm.detach().item()}
 
     def validation_step(self, batch: TensorDict):
         self.fsdp_model.eval()
@@ -449,7 +507,8 @@ class FSDPSFTTrainer(object):
         if rank == 0:
             tracking = Tracking(project_name=self.config.trainer.project_name,
                                 experiment_name=self.config.trainer.experiment_name,
-                                default_backend=self.config.trainer.logger)
+                                default_backend=self.config.trainer.logger,
+                                config=self.config)
 
         global_step = 0
         # compute the total training steps.
@@ -464,16 +523,31 @@ class FSDPSFTTrainer(object):
 
         # TODO (zhangchi.usc1992) add back checkpoint manager. Currently, it blocks when uploading to hdfs. So very slow.
 
+        # validation at step 0
+        val_losses = []
+        for data in self.val_dataloader:
+            data = TensorDict(data, batch_size=self.config.data.micro_batch_size_per_gpu).cuda()
+            val_loss = self.validation_step(data)
+            val_losses.append(val_loss)
+        if rank == 0:
+            val_loss = torch.mean(torch.stack(val_losses))
+            metric = {'val/loss': val_loss.detach().item()}
+            tracking.log(data=metric, step=global_step)
+        torch.distributed.barrier()
+
         for epoch in range(self.config.trainer.total_epochs):
             self.train_sampler.set_epoch(epoch=epoch)
             for data in tqdm(self.train_dataloader,
                              total=self.steps_per_epoch,
                              desc=f"Epoch {epoch+1}/{self.config.trainer.total_epochs}"):
-                global_step += 1
                 data = TensorDict(data, batch_size=self.config.data.train_batch_size).cuda()
                 metric = self.training_step(data)
                 if rank == 0:
                     tracking.log(data=metric, step=global_step)
+                global_step += 1
+
+                if global_step % self.config.trainer.save_checkpoint_steps == 0:
+                    self.save_checkpoint(step=global_step)
 
                 # for early exit validation
                 if global_step >= self.total_training_steps:
@@ -493,17 +567,18 @@ class FSDPSFTTrainer(object):
                     self.save_checkpoint(step=global_step)
                     return
 
-            # validation
-            val_losses = []
-            for data in self.val_dataloader:
-                data = TensorDict(data, batch_size=self.config.data.micro_batch_size_per_gpu).cuda()
-                val_loss = self.validation_step(data)
-                val_losses.append(val_loss)
-            if rank == 0:
-                val_loss = torch.mean(torch.stack(val_losses))
-                metric = {'val/loss': val_loss.detach().item()}
-                tracking.log(data=metric, step=global_step)
-            torch.distributed.barrier()
+                if global_step % self.config.trainer.save_checkpoint_steps == 0:
+                    # validation
+                    val_losses = []
+                    for data in self.val_dataloader:
+                        data = TensorDict(data, batch_size=self.config.data.micro_batch_size_per_gpu).cuda()
+                        val_loss = self.validation_step(data)
+                        val_losses.append(val_loss)
+                    if rank == 0:
+                        val_loss = torch.mean(torch.stack(val_losses))
+                        metric = {'val/loss': val_loss.detach().item()}
+                        tracking.log(data=metric, step=global_step)
+                    torch.distributed.barrier()
 
             # save checkpoint
             self.save_checkpoint(step=global_step)
