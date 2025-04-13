@@ -100,6 +100,8 @@ actor_rollout_ref:
     do_sample: True
     # number of responses (i.e. num sample times)
     n: 1 # > 1 for grpo
+    n_advantage_tracking: 1 # this is the size of group for advantage tracking
+
     val_kwargs:
       # sampling parameters for validation
       top_k: -1 # 0 for hf rollout, -1 for vllm rollout
@@ -189,8 +191,6 @@ algorithm:
     # `fill_to_train_bsz` will repeat sampling with generation batch size until there are enough qualified groups for the training batch size
     fill_to_train_bsz: True
     drop_last_mini_batch: True
-  only_positive_advantages:
-    enable: False
 
 trainer:
   balance_batch: True
@@ -212,3 +212,5 @@ trainer:
   remove_previous_ckpt_in_save: False
   del_local_ckpt_after_load: False
   default_local_dir: checkpoints/${trainer.project_name}/${trainer.experiment_name}
+  track_advantages: False
+  track_advantages_freq: 6
