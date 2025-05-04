@@ -20,13 +20,14 @@ TODO(zhangchi.usc1992)
 
 import os
 import json
+import time
 
 os.environ['NCCL_DEBUG'] = 'WARN'
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 import logging
 import re
-from contextlib import nullcontext
+from contextlib import nullcontext, contextmanager
 import torch
 import torch.distributed
 from torch import nn, optim
@@ -52,6 +53,7 @@ from peft import LoraConfig, TaskType, get_peft_model
 from verl.workers.sharding_manager import FSDPUlyssesShardingManager
 from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
 from verl import DataProto
+from verl.utils.flops_counter import FlopsCounter
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv('VERL_SFT_LOGGING_LEVEL', 'WARN'))
@@ -74,6 +76,15 @@ def convert_to_regular_types(obj):
     elif isinstance(obj, dict):
         return {k: convert_to_regular_types(v) for k, v in obj.items()}
     return obj
+
+
+@contextmanager
+def _timer(name: str, timing_dict: dict):
+    """Simple timer context manager."""
+    start = time.time()
+    yield
+    end = time.time()
+    timing_dict[name] = end - start
 
 
 class FSDPSFTTrainer(object):
@@ -106,6 +117,9 @@ class FSDPSFTTrainer(object):
         self._build_dataloader()
         # build model
         self._build_model_optimizer()
+
+        # Instantiate FlopsCounter after model config is available
+        self.flops_counter = FlopsCounter(self.model_config)
 
         # TODO: add checkpoint manager
         if self.device_mesh.get_rank() == 0:
@@ -211,6 +225,7 @@ class FSDPSFTTrainer(object):
         trust_remote_code = self.config.model.trust_remote_code
         # load config first
         config = AutoConfig.from_pretrained(local_model_path, trust_remote_code=trust_remote_code)
+        self.model_config = config # Store model config for FlopsCounter
         if self.config.ulysses_sequence_parallel_size > 1:
             assert self.use_remove_padding, "Sequence parallel is only supported when remove_padding is enabled"
             from verl.models.registry import check_model_support_rmpad
@@ -441,6 +456,7 @@ class FSDPSFTTrainer(object):
 
     def training_step(self, batch: TensorDict):
         self.fsdp_model.train()
+        timing_raw = {} # Dictionary to store timing info for FLOPs calculation
 
         log_gpu_memory_usage('Before optimizer zero_grad', logger=logger)
 
@@ -451,21 +467,57 @@ class FSDPSFTTrainer(object):
         micro_batches = batch.split(self.config.data.micro_batch_size_per_gpu)
         n_micro_batches = len(micro_batches)
         step_loss = 0
-        for micro_batch in micro_batches:
-            loss = self._compute_loss_and_backward(batch=micro_batch) / n_micro_batches
-            step_loss += loss.item()
-        
-        grad_norm = self.fsdp_model.clip_grad_norm_(max_norm=self.config.optim.clip_grad)
-        print(f'Grad norm: {grad_norm}')
-        print(f'type of grad_norm: {type(grad_norm)}')
+        total_tokens_in_step = 0 # Accumulate tokens for FLOPs calculation
+        # Need sequence lengths per batch item for the counter
+        batch_seqlens = batch['attention_mask'].sum(dim=1).tolist()
 
-        log_gpu_memory_usage('Before optimizer step', logger=logger)
+        with _timer('train_step_inner', timing_raw): # Time the core training part
+            for micro_batch in micro_batches:
+                # Add tokens in this micro_batch
+                total_tokens_in_step += micro_batch['attention_mask'].sum().item()
+                # Compute loss and backward for the micro-batch
+                loss = self._compute_loss_and_backward(batch=micro_batch) / n_micro_batches
+                step_loss += loss.item()
 
-        self.optimizer.step()
+            # Clip gradients after accumulating over all micro-batches
+            grad_norm = self.fsdp_model.clip_grad_norm_(max_norm=self.config.optim.clip_grad)
+            # print(f'Grad norm: {grad_norm}')
+            # print(f'type of grad_norm: {type(grad_norm)}') # This might cause issues if None sometimes
 
-        log_gpu_memory_usage('After optimizer step', logger=logger)
+            log_gpu_memory_usage('Before optimizer step', logger=logger)
+
+            self.optimizer.step()
+
+            log_gpu_memory_usage('After optimizer step', logger=logger)
 
         self.lr_scheduler.step()
+
+        # --- FLOPs Calculation ---
+        delta_time = timing_raw.get('train_step_inner', 0)
+
+        # Reduce sequence lengths list across DP ranks (concatenate lists)
+        # This assumes each DP rank processes a distinct part of the global batch.
+        # Need to gather all sequence lengths processed in this step globally.
+        gathered_batch_seqlens_list = [None] * self.device_mesh.size()
+        # Use DP group if SP is enabled, otherwise default FSDP group
+        group = self.ulysses_device_mesh.get_group('dp') if self.config.ulysses_sequence_parallel_size > 1 else None
+        torch.distributed.all_gather_object(gathered_batch_seqlens_list, batch_seqlens, group=group)
+        global_batch_seqlens = [seqlen for sublist in gathered_batch_seqlens_list for seqlen in sublist]
+
+        # Reduce total tokens across DP ranks (already done implicitly by summing gathered seq lens)
+        global_total_tokens_in_step = sum(global_batch_seqlens)
+
+
+        estimated_flops_per_step = 0
+        promised_flops = 0
+        mfu = 0
+        if delta_time > 0 and global_total_tokens_in_step > 0:
+             # Estimate FLOPs using the counter. No 'passes' argument needed.
+             # Pass the list of sequence lengths from the *entire* global batch.
+             estimated_flops_per_step, promised_flops = self.flops_counter.estimate_flops(global_batch_seqlens, delta_time)
+             if promised_flops > 0:
+                 mfu = estimated_flops_per_step / promised_flops / self.device_mesh.size() # MFU calculation
+        # -------------------------
 
         # reduce loss across dp ranks
         lr = self.lr_scheduler.get_last_lr()[0]
@@ -474,7 +526,17 @@ class FSDPSFTTrainer(object):
 
         step_loss = torch.tensor(step_loss).cuda()
         torch.distributed.all_reduce(step_loss, op=torch.distributed.ReduceOp.AVG)
-        return {'train/loss': step_loss.detach().item(), 'train/lr(1e-3)': lr * 1e3, 'train/grad_norm': grad_norm.detach().item()}
+
+        # Handle potential None grad_norm before detaching/item()
+        grad_norm_item = grad_norm.detach().item() if grad_norm is not None else 0.0
+
+        return {
+            'train/loss': step_loss.detach().item(),
+            'train/lr(1e-3)': lr * 1e3,
+            'train/grad_norm': grad_norm_item,
+            'perf/estimated_flops_per_step': estimated_flops_per_step, # Add FLOPs
+            'perf/mfu': mfu # Add MFU
+        }
 
     def validation_step(self, batch: TensorDict):
         self.fsdp_model.eval()
@@ -482,6 +544,16 @@ class FSDPSFTTrainer(object):
             loss = self._compute_loss_and_backward(batch, do_backward=False)
             torch.distributed.all_reduce(loss, op=torch.distributed.ReduceOp.AVG)
         return loss
+
+    def _log_metrics_to_jsonl(self, filepath: str, step: int, metrics: dict):
+        """Appends a step's metrics to a JSON Lines file."""
+        try:
+            # Ensure all values in metrics are JSON serializable (e.g., convert tensors to floats)
+            log_entry = {"step": step, **{k: float(v) if isinstance(v, torch.Tensor) else v for k, v in metrics.items()}}
+            with open(filepath, "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except Exception as e:
+            print(f"Warning: Failed to write metrics to {filepath} for step {step}. Error: {e}")
 
     def save_checkpoint(self, step):
         # save checkpoint
@@ -509,12 +581,17 @@ class FSDPSFTTrainer(object):
 
     def fit(self):
         rank = self.device_mesh.get_rank()
+        metrics_log_path = None # Initialize path variable
 
         # Convert config to regular Python types before initializing tracking
         if rank == 0:
             # Create the base directory if it doesn't exist
             base_save_dir = self.config.trainer.default_local_dir
             os.makedirs(base_save_dir, exist_ok=True)
+
+            # Define metrics log file path
+            metrics_log_path = os.path.join(base_save_dir, 'metrics.jsonl')
+            print(f"Logging training metrics to: {metrics_log_path}")
 
             # Save the config once at the beginning
             config_path = os.path.join(base_save_dir, 'config.json')
@@ -535,8 +612,7 @@ class FSDPSFTTrainer(object):
                 except Exception as e:
                     print(f"Failed to copy config to HDFS: {e}")
 
-            # Convert config to dict and sanitize it for wandb
-            # config_dict = convert_to_regular_types(self.config) # Already converted above
+            # Initialize tracking
             tracking = Tracking(project_name=self.config.trainer.project_name,
                               experiment_name=self.config.trainer.experiment_name,
                               default_backend=self.config.trainer.logger,
@@ -576,6 +652,10 @@ class FSDPSFTTrainer(object):
                 metric = self.training_step(data)
                 if rank == 0:
                     tracking.log(data=metric, step=global_step)
+                    # Log metrics to JSONL file
+                    if metrics_log_path: # Ensure path is defined (only rank 0)
+                        self._log_metrics_to_jsonl(metrics_log_path, global_step, metric)
+
                 global_step += 1
 
                 if global_step % self.config.trainer.save_checkpoint_steps == 0:
