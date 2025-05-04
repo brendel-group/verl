@@ -19,6 +19,7 @@ TODO(zhangchi.usc1992)
 """
 
 import os
+import json
 
 os.environ['NCCL_DEBUG'] = 'WARN'
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
@@ -493,9 +494,15 @@ class FSDPSFTTrainer(object):
         # save huggingface model
         if self.device_mesh.get_rank() == 0:
             os.makedirs(path, exist_ok=True)
+            # Save the config as JSON - Removed from here
+            # config_path = os.path.join(path, 'config.json')
+            # config_dict = convert_to_regular_types(self.config) # Convert Hydra config to dict
+            # with open(config_path, 'w') as f:
+            #     json.dump(config_dict, f, indent=4)
             self.model.save_pretrained(path, state_dict=state_dict)
             self.tokenizer.save_pretrained(path)
             if self.config.trainer.default_hdfs_dir:
+                # Removed HDFS copy of config from here
                 hdfs_io.makedirs(self.config.trainer.default_hdfs_dir, exist_ok=True)
                 hdfs_io.copy(src=path, dst=self.config.trainer.default_hdfs_dir, dirs_exist_ok=True)
         torch.distributed.barrier()
@@ -503,12 +510,37 @@ class FSDPSFTTrainer(object):
     def fit(self):
         rank = self.device_mesh.get_rank()
 
-        # TODO: add a unified tracking
+        # Convert config to regular Python types before initializing tracking
         if rank == 0:
+            # Create the base directory if it doesn't exist
+            base_save_dir = self.config.trainer.default_local_dir
+            os.makedirs(base_save_dir, exist_ok=True)
+
+            # Save the config once at the beginning
+            config_path = os.path.join(base_save_dir, 'config.json')
+            config_dict = convert_to_regular_types(self.config) # Convert Hydra config to dict
+            with open(config_path, 'w') as f:
+                json.dump(config_dict, f, indent=4)
+            print(f"Configuration saved to {config_path}")
+
+            # Optionally copy config to HDFS once
+            if self.config.trainer.default_hdfs_dir:
+                hdfs_base_dir = self.config.trainer.default_hdfs_dir
+                hdfs_io.makedirs(hdfs_base_dir, exist_ok=True)
+                hdfs_config_path = os.path.join(hdfs_base_dir, 'config.json')
+                try:
+                    # Use put to copy the single file
+                    hdfs_io.put(src=config_path, dst=hdfs_config_path)
+                    print(f"Configuration copied to HDFS: {hdfs_config_path}")
+                except Exception as e:
+                    print(f"Failed to copy config to HDFS: {e}")
+
+            # Convert config to dict and sanitize it for wandb
+            # config_dict = convert_to_regular_types(self.config) # Already converted above
             tracking = Tracking(project_name=self.config.trainer.project_name,
-                                experiment_name=self.config.trainer.experiment_name,
-                                default_backend=self.config.trainer.logger,
-                                config=self.config)
+                              experiment_name=self.config.trainer.experiment_name,
+                              default_backend=self.config.trainer.logger,
+                              config=config_dict)  # Use the sanitized config dict
 
         global_step = 0
         # compute the total training steps.
@@ -567,7 +599,7 @@ class FSDPSFTTrainer(object):
                     self.save_checkpoint(step=global_step)
                     return
 
-                if global_step % self.config.trainer.save_checkpoint_steps == 0:
+                if global_step % self.config.trainer.validate_every_n_steps == 0:
                     # validation
                     val_losses = []
                     for data in self.val_dataloader:
