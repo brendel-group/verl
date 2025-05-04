@@ -434,7 +434,11 @@ class ActorRolloutRefWorker(Worker):
                 metrics = self.actor.update_policy(data=data)
             delta_time = timer.last
             global_num_tokens = data.meta_info['global_token_num']
+            # Ensure global_num_tokens is a single number (sum if it's a list)
+            if isinstance(global_num_tokens, list):
+                 global_num_tokens = sum(global_num_tokens)
             estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
+            metrics['perf/estimated_flops_per_update'] = estimated_flops # Add raw FLOPs
             metrics[
                 'perf/mfu/actor'] = estimated_flops * self.config.actor.ppo_epochs / promised_flops / self.world_size
             metrics['perf/max_memory_allocated_gb'] = torch.cuda.max_memory_allocated() / (1024**3)
@@ -826,7 +830,11 @@ class CriticWorker(Worker):
             delta_time = timer.last
 
             global_num_tokens = data.meta_info['global_token_num']
+            # Ensure global_num_tokens is a single number (sum if it's a list)
+            if isinstance(global_num_tokens, list):
+                 global_num_tokens = sum(global_num_tokens)
             estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
+            metrics['perf/estimated_flops_per_update'] = estimated_flops # Add raw FLOPs
             metrics['perf/mfu/critic'] = estimated_flops * self.config.ppo_epochs / promised_flops / self.world_size
 
             self.critic_lr_scheduler.step()
