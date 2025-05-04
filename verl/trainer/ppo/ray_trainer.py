@@ -1138,6 +1138,10 @@ class RayPPOTrainer(object):
         # Define eval log file path
         eval_log_path = os.path.join(base_save_dir, 'eval.jsonl')
         print(f"Logging validation metrics to: {eval_log_path}")
+        # Define training metrics log file path
+        train_metrics_log_path = os.path.join(base_save_dir, 'metrics.jsonl')
+        print(f"Logging training metrics to: {train_metrics_log_path}")
+
 
         config_path = os.path.join(base_save_dir, 'config.json')
         config_dict = OmegaConf.to_container(self.config, resolve=True) # Convert OmegaConf to dict
@@ -1392,6 +1396,8 @@ class RayPPOTrainer(object):
                         with _timer('update_actor', timing_raw):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
+                        # actor_output_metrics already contains 'perf/mfu/actor' and potentially raw FLOPs counts
+                        # if added in the worker. Let's ensure we log everything it returns.
                         metrics.update(actor_output_metrics)
 
                     # validate
@@ -1418,8 +1424,11 @@ class RayPPOTrainer(object):
                 n_gpus = self.resource_pool_manager.get_n_gpus()
                 metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
 
-                # TODO: make a canonical logger that supports various backend
+                # Log all collected metrics, including FLOPs/MFU from workers
                 logger.log(data=metrics, step=self.global_steps)
+                # Log training metrics to JSONL file
+                self._log_metrics_to_jsonl(train_metrics_log_path, self.global_steps, metrics)
+
 
                 # Compute advantages at the end of the epoch if needed
                 if self.advantage_tracking_enabled and (
