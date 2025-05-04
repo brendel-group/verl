@@ -1110,6 +1110,14 @@ class RayPPOTrainer(object):
         torch.save(advantage_data, filepath)
         print(f"Saved {dataset_type} advantage data to {filepath}")
         
+    def _log_metrics_to_jsonl(self, filepath: str, step: int, metrics: dict):
+        """Appends a step's metrics to a JSON Lines file."""
+        try:
+            log_entry = {"step": step, **metrics}
+            with open(filepath, "a") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except Exception as e:
+            print(f"Warning: Failed to write metrics to {filepath} for step {step}. Error: {e}")
 
 
     def fit(self):
@@ -1120,10 +1128,16 @@ class RayPPOTrainer(object):
         """
         from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
+        import json # Added import for json
+        from verl.utils import hdfs_io # Added import for hdfs_io
 
         # Save config before initializing tracking
         base_save_dir = self.config.trainer.default_local_dir
         os.makedirs(base_save_dir, exist_ok=True)
+
+        # Define eval log file path
+        eval_log_path = os.path.join(base_save_dir, 'eval.jsonl')
+        print(f"Logging validation metrics to: {eval_log_path}")
 
         config_path = os.path.join(base_save_dir, 'config.json')
         config_dict = OmegaConf.to_container(self.config, resolve=True) # Convert OmegaConf to dict
@@ -1156,10 +1170,14 @@ class RayPPOTrainer(object):
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
+        initial_val_step = self.global_steps # Capture the step before training starts (could be 0 or loaded step)
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
             val_metrics = self._validate()
-            pprint(f'Initial validation metrics: {val_metrics}')
-            logger.log(data=val_metrics, step=self.global_steps)
+            pprint(f'Initial validation metrics (step {initial_val_step}): {val_metrics}')
+            logger.log(data=val_metrics, step=initial_val_step)
+            # Log initial metrics to jsonl
+            if val_metrics: # Ensure metrics are not empty
+                self._log_metrics_to_jsonl(eval_log_path, initial_val_step, val_metrics)
 
             if self.advantage_tracking_enabled:
                 step_init = self.config.trainer.get('step_init', -1)
@@ -1169,14 +1187,12 @@ class RayPPOTrainer(object):
             if self.config.trainer.get('val_only', False):
                 return
 
-        # we start from step 1
-        self.global_steps += 1
+        # we start from step 1 (or the step after load)
+        if self.global_steps <= initial_val_step: # Ensure global_steps increments if starting from 0 or loaded step
+             self.global_steps += 1
         total_seen_samples = 0
         last_val_metrics = None
         steps_per_epoch = self.total_training_steps // self.config.trainer.total_epochs
-
-        
-
 
         while self.global_steps < self.total_training_steps:
             epoch = self.global_steps // steps_per_epoch
@@ -1381,6 +1397,9 @@ class RayPPOTrainer(object):
                             if is_last_step:
                                 last_val_metrics = val_metrics
                         metrics.update(val_metrics)
+                        # Log periodic/final metrics to jsonl
+                        if val_metrics: # Ensure metrics are not empty
+                            self._log_metrics_to_jsonl(eval_log_path, self.global_steps, val_metrics)
 
                     if self.config.trainer.save_freq > 0 and ( is_last_step or \
                             self.global_steps % self.config.trainer.save_freq == 0):
