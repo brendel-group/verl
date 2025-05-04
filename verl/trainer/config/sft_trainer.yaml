@@ -10,6 +10,7 @@ data:
   truncation: error
   balance_dp_token: False
   chat_template: null
+  weight_key: null
 model:
   partial_pretrain: ~/models/gemma-1.1-7b-it
   fsdp_config:
@@ -30,6 +31,7 @@ optim:
   weight_decay: 0.01
   warmup_steps_ratio: 0.1
   clip_grad: 1.0
+  use_likelihood_loss: False
 ulysses_sequence_parallel_size: 1
 use_remove_padding: False
 trainer:
@@ -42,4 +44,3 @@ trainer:
   total_training_steps: null
   logger: ['console']
   seed: 1
-

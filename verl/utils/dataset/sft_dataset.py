@@ -44,7 +44,8 @@ class SFTDataset(Dataset):
                  response_key='response',
                  response_dict_keys=None,
                  max_length=1024,
-                 truncation='error'):
+                 truncation='error',
+                 weight_key=None):
         assert truncation in ['error', 'left', 'right']
         self.truncation = truncation
 
@@ -62,6 +63,7 @@ class SFTDataset(Dataset):
         self.response_dict_keys = [] if not response_dict_keys else response_dict_keys
 
         self.max_length = max_length
+        self.weight_key = weight_key
 
         self._download()
         self._read_files_and_tokenize()
@@ -103,6 +105,12 @@ class SFTDataset(Dataset):
                 print(f'self.responses={self.responses}')
                 raise
         self.responses = self.responses.tolist()
+
+        if self.weight_key is not None:
+            self.weights = self.dataframe[self.weight_key]
+            self.weights = self.weights.tolist()
+        else:
+            self.weights = None
 
     def __len__(self):
         return len(self.prompts)
@@ -165,6 +173,9 @@ class SFTDataset(Dataset):
             loss_mask[:min(prompt_length, loss_mask.size(0)) - 1] = 0
         # mask out the last token in response
         loss_mask[min(prompt_length + response_length, loss_mask.size(0)) - 1] = 0
+
+        if self.weight_key is not None:
+            loss_mask = loss_mask * self.weights[item]
 
         return {
             'input_ids': input_ids,
