@@ -45,6 +45,8 @@ from verl.utils.tracking import ValidationGenerationsLogger
 from torch.utils.data import RandomSampler, SequentialSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
+import json
+from verl.utils import hdfs_io
 
 
 WorkerType = Type[Worker]
@@ -1119,10 +1121,33 @@ class RayPPOTrainer(object):
         from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
 
+        # Save config before initializing tracking
+        base_save_dir = self.config.trainer.default_local_dir
+        os.makedirs(base_save_dir, exist_ok=True)
+
+        config_path = os.path.join(base_save_dir, 'config.json')
+        config_dict = OmegaConf.to_container(self.config, resolve=True) # Convert OmegaConf to dict
+        with open(config_path, 'w') as f:
+            json.dump(config_dict, f, indent=4)
+        print(f"Configuration saved to {config_path}")
+
+        # Optionally copy config to HDFS once
+        if self.config.trainer.default_hdfs_dir:
+            hdfs_base_dir = self.config.trainer.default_hdfs_dir
+            hdfs_io.makedirs(hdfs_base_dir, exist_ok=True)
+            hdfs_config_path = os.path.join(hdfs_base_dir, 'config.json')
+            try:
+                # Use put to copy the single file
+                hdfs_io.put(src=config_path, dst=hdfs_config_path)
+                print(f"Configuration copied to HDFS: {hdfs_config_path}")
+            except Exception as e:
+                print(f"Failed to copy config to HDFS: {e}")
+
+
         logger = Tracking(project_name=self.config.trainer.project_name,
                           experiment_name=self.config.trainer.experiment_name,
                           default_backend=self.config.trainer.logger,
-                          config=OmegaConf.to_container(self.config, resolve=True))
+                          config=config_dict) # Use the saved config dict for tracking
 
         self.global_steps = 0
 
