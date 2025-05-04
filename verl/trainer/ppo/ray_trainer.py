@@ -1141,9 +1141,10 @@ class RayPPOTrainer(object):
 
         config_path = os.path.join(base_save_dir, 'config.json')
         config_dict = OmegaConf.to_container(self.config, resolve=True) # Convert OmegaConf to dict
-        with open(config_path, 'w') as f:
-            json.dump(config_dict, f, indent=4)
-        print(f"Configuration saved to {config_path}")
+        if not os.path.exists(config_path):
+            with open(config_path, 'w') as f:
+                json.dump(config_dict, f, indent=4)
+            print(f"Configuration saved to {config_path}")
 
         # Optionally copy config to HDFS once
         if self.config.trainer.default_hdfs_dir:
@@ -1172,15 +1173,19 @@ class RayPPOTrainer(object):
         # currently, we only support validation using the reward_function.
         initial_val_step = self.global_steps # Capture the step before training starts (could be 0 or loaded step)
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
-            val_metrics = self._validate()
-            pprint(f'Initial validation metrics (step {initial_val_step}): {val_metrics}')
-            logger.log(data=val_metrics, step=initial_val_step)
-            # Log initial metrics to jsonl
-            if val_metrics: # Ensure metrics are not empty
-                self._log_metrics_to_jsonl(eval_log_path, initial_val_step, val_metrics)
+            if self.config.trainer.get('skip_val', False):
+                print("Skipping validation")
+            else:
+                val_metrics = self._validate()
+                pprint(f'Initial validation metrics (step {initial_val_step}): {val_metrics}')
+                logger.log(data=val_metrics, step=initial_val_step)
+                # Log initial metrics to jsonl
+                if val_metrics: # Ensure metrics are not empty
+                    self._log_metrics_to_jsonl(eval_log_path, initial_val_step, val_metrics)
 
             if self.advantage_tracking_enabled:
-                step_init = self.config.trainer.get('step_init', -1)
+                #step_init = self.config.trainer.get('step_init', -1)
+                step_init = self.global_steps
                 self._compute_and_save_dataset_advantages(step=step_init, dataset_type='val', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
                 self._compute_and_save_dataset_advantages(step=step_init, dataset_type='train', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
 
