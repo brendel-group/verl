@@ -13,10 +13,10 @@ The script takes the following command-line arguments:
 - data_source: Data source identifier for the DataFrame
 - ability: Ability identifier for the DataFrame
 - select_all: Optional flag to select all elements with score 1.0 instead of just one
-- test_split: Percentage (0-100) of data to use for test set
-- include_negatives: Include samples with score 0.0 as negative examples
+- test_split: Proportion (0.0-1.0) of data to use for test set
+- negative_mode: Strategy for including negative examples ('none', 'if_positive', 'all')
 - neg_weight: Weight value for negative samples (score 0.0)
-- neg_ratio: Ratio of negative to positive samples (0.0-x.0)
+- neg_ratio: Ratio of negative to positive samples (0.0-x.0). If -1, include all eligible negatives. Ignored if negative_mode is 'none'.
 
 The output parquet files will be saved at:
   {save_path}/{model_name_from_adv_path}_train_step_X/train.parquet
@@ -29,9 +29,10 @@ python wrap_selfdistilled_data.py \
   --data_source my_dataset \
   --ability reasoning \
   --test_split 10 \
-  --include_negatives \
+  --negative_mode all \
   --neg_weight -1.0 \
-  --neg_ratio 0.5
+  --neg_ratio 0.5 \
+  --select_all
 """
 
 import pandas as pd
@@ -42,7 +43,7 @@ import torch
 from pathlib import Path
 
 
-def create_dataframe_from_advantage(advantage, data_source, ability, select_all=False, include_negatives=False, neg_weight=-1.0, neg_ratio=0.5):
+def create_dataframe_from_advantage(advantage, data_source, ability, select_all=False, negative_mode='none', neg_weight=-1.0, neg_ratio=0.5):
     """
     Creates a dataframe from advantage data with the specified structure.
     
@@ -55,20 +56,24 @@ def create_dataframe_from_advantage(advantage, data_source, ability, select_all=
     ability : str
         Value to set for 'ability' column
     select_all : bool, optional (default=False)
-        If True, create a row for each element with score 1.0 or 0.0.
-        If False, select one random element with score 1.0 per sample.
-    include_negatives : bool, optional (default=False)
-        If True, include samples with score 0.0 as negative examples
+        If True, create a row for each element with score 1.0 or 0.0 (depending on negative_mode).
+        If False, select one random element with score 1.0 per sample (and potentially one negative).
+    negative_mode : str, optional (default='none')
+        Strategy for including negative examples:
+        - 'none': Only include positive examples (score 1.0).
+        - 'if_positive': Include negatives (score 0.0) only if a positive exists for the same original index.
+        - 'all': Include all negatives found.
     neg_weight : float, optional (default=-1.0)
-        Weight value for negative samples (score 0.0)
+        Weight value for negative samples (score 0.0). Used only if negative_mode is not 'none'.
     neg_ratio : float, optional (default=0.5)
-        Ratio of negative to positive samples (0.0-1.0)
+        Ratio of negative to positive samples (0.0-x.0). If -1, include all eligible negatives.
+        Used only if negative_mode is not 'none'.
     
     Returns:
     --------
     pandas.DataFrame
         DataFrame with columns: 'data_source', 'prompt', 'ability', 'extra_info', 'original_idx'
-        and optionally 'weight' if include_negatives=True
+        and optionally 'weight' if negative_mode is not 'none'.
     """
     import pandas as pd
     import random
@@ -79,9 +84,13 @@ def create_dataframe_from_advantage(advantage, data_source, ability, select_all=
     positive_data = []
     negative_data = []
     
+    # Track seen (prompt, response) pairs to avoid duplicates
+    seen_pairs = set()
+    
     for sample_idx, sample_list in samples.items():
         # Filter elements with score 1.0 (positive examples)
         score_1_elements = [elem for elem in sample_list if elem.get('score', 0) == 1.0]
+        has_positive = bool(score_1_elements) # Track if positive exists for this index
         
         # Process positive examples
         if score_1_elements:
@@ -92,16 +101,25 @@ def create_dataframe_from_advantage(advantage, data_source, ability, select_all=
                 elements_to_process = [random.choice(score_1_elements)]
             
             for elem in elements_to_process:
-                if include_negatives:
-                    # Include weight only if we have negative examples
-                    row = create_row(elem, data_source, ability, dataset_type, sample_idx, weight=1.0)
-                else:
-                    row = create_row(elem, data_source, ability, dataset_type, sample_idx)
-                positive_data.append(row)
+                # Check for duplicates
+                prompt_full = elem.get('prompt', '')
+                response = elem.get('response', '')
+                pair_key = (prompt_full, response)
+                
+                if pair_key not in seen_pairs:
+                    seen_pairs.add(pair_key)
+                    # Include weight column if any negatives might be included
+                    if negative_mode != 'none': 
+                        row = create_row(elem, data_source, ability, dataset_type, sample_idx, weight=1.0)
+                    else:
+                        row = create_row(elem, data_source, ability, dataset_type, sample_idx)
+                    positive_data.append(row)
         
-        # Process negative examples (score 0.0) if requested
-        if include_negatives:
-            score_0_elements = [elem for elem in sample_list if elem.get('score', 0) == 0.0]
+        # Process negative examples (score 0.0) based on negative_mode
+        should_process_negatives_for_index = (negative_mode == 'all') or (negative_mode == 'if_positive' and has_positive)
+        
+        if should_process_negatives_for_index:
+            score_0_elements = [elem for elem in sample_list if elem.get('score', 0) in [0.0, -1.0]]
             if score_0_elements:
                 if select_all:
                     # Apply select_all to negative examples as well
@@ -111,23 +129,60 @@ def create_dataframe_from_advantage(advantage, data_source, ability, select_all=
                     elements_to_process = [random.choice(score_0_elements)] if score_0_elements else []
                 
                 for elem in elements_to_process:
-                    row = create_row(elem, data_source, ability, dataset_type, sample_idx, weight=neg_weight)
-                    negative_data.append(row)
+                    # Check for duplicates
+                    prompt_full = elem.get('prompt', '')
+                    response = elem.get('response', '')
+                    pair_key = (prompt_full, response)
+                    
+                    if pair_key not in seen_pairs:
+                        seen_pairs.add(pair_key)
+                        row = create_row(elem, data_source, ability, dataset_type, sample_idx, weight=neg_weight)
+                        negative_data.append(row)
     
     # Calculate how many negative examples to include based on the ratio
-    if include_negatives and negative_data:
+    # Only apply sampling if negative mode is active and we found negatives
+    if negative_mode != 'none' and negative_data:
         num_positives = len(positive_data)
-        num_negatives_to_include = int(num_positives * neg_ratio)
         
-        # Randomly sample negative examples if we have more than needed
-        if num_negatives_to_include < len(negative_data):
+        if neg_ratio == -1:
+            num_negatives_to_include = len(negative_data)
+            print(f"Including all {num_negatives_to_include} eligible negative samples (neg_ratio=-1).")
+        elif num_positives > 0: # Avoid division by zero if no positives
+            num_negatives_to_include = int(num_positives * neg_ratio)
+            print(f"Targeting {num_negatives_to_include} negative samples based on ratio {neg_ratio} and {num_positives} positives.")
+        else:
+            num_negatives_to_include = 0 # No positives, so no negatives based on ratio
+            print("No positive samples found, including 0 negative samples based on ratio.")
+
+        # Randomly sample negative examples if needed (and ratio is not -1)
+        if neg_ratio != -1 and num_negatives_to_include < len(negative_data):
+            print(f"Sampling {num_negatives_to_include} negative examples from {len(negative_data)} available.")
             negative_data = random.sample(negative_data, num_negatives_to_include)
+        elif num_negatives_to_include == 0 and len(negative_data) > 0:
+             # Ensure no negatives are included if ratio calculation results in 0
+             print(f"Ignoring {len(negative_data)} negative samples as target is {num_negatives_to_include}.")
+             negative_data = []
+        else:
+             # Either neg_ratio == -1 or num_negatives_to_include >= len(negative_data)
+             print(f"Including all {len(negative_data)} available eligible negative examples.")
+             # No sampling needed, use all collected negative_data that met criteria
+    elif negative_mode != 'none' and not negative_data:
+         print("Negative mode is active, but no eligible negative samples were found.")
     
     # Combine positive and negative examples
     all_data = positive_data + negative_data
     
     # Shuffle the combined data
     random.shuffle(all_data)
+    
+    # Calculate duplicates based on initial processing before negative sampling
+    total_processed_count = len(positive_data) + len(negative_data) # Count before potential sampling
+    # Note: Duplicate count might be slightly misleading if negatives were sampled down significantly.
+    # It reflects duplicates found during the initial pass.
+    # A more precise duplicate count would require re-checking seen_pairs against the final 'all_data'.
+    # For simplicity, we keep the current calculation based on initial additions.
+    print(f"Created dataset with {len(all_data)} examples ({len(positive_data)} positive, {len(negative_data)} negative).") 
+    # Removed duplicate print statement here.
     
     return pd.DataFrame(all_data)
 
@@ -258,15 +313,16 @@ def split_train_test(df, test_proportion):
 def main():
     parser = argparse.ArgumentParser(description="Process advantage data and save as parquet")
     parser.add_argument("--adv_path", type=str, default=None, help="Path to the advantage file (.pt)")
-    parser.add_argument("--save_path", type=str, default='/fast/pmayilvahanan/post_training/self_distilled_datasets/', help="Base directory to save the parquet file")
+    parser.add_argument("--save_path", type=str, default='/fast/pmayilvahanan/post_training/self_distilled_datasets_neurips/', help="Base directory to save the parquet file")
     parser.add_argument("--data_source", type=str, default='openai/gsm8k', help="Data source identifier")
     parser.add_argument("--ability", type=str, default='math', help="Ability identifier")
-    parser.add_argument("--select_all", action="store_true", help="Select all elements with score 1.0 instead of just one")
-    parser.add_argument("--test_split", type=float, default=0.1, help="Percentage of data to use for test set (0-100)")
+    parser.add_argument("--select_all", action="store_true", help="Select all elements with score 1.0 (and 0.0 if negative_mode != 'none') instead of just one positive")
+    parser.add_argument("--test_split", type=float, default=0.1, help="Proportion of data to use for test set (0.0-1.0)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--include_negatives", action="store_true", help="Include samples with score 0.0 as negative examples")
+    parser.add_argument("--negative_mode", type=str, default='none', choices=['none', 'if_positive', 'all'],
+                        help="Strategy for including negative examples ('none', 'if_positive', 'all')")
     parser.add_argument("--neg_weight", type=float, default=-1.0, help="Weight value for negative samples (score 0.0)")
-    parser.add_argument("--neg_ratio", type=float, default=0.5, help="Ratio of negative to positive samples (0.0-x.0)")
+    parser.add_argument("--neg_ratio", type=float, default=-1.0, help="Ratio of negative to positive samples (0.0-x.0). Set to -1 to include all. Ignored if negative_mode='none'.")
     
     args = parser.parse_args()
     
@@ -279,15 +335,21 @@ def main():
     
     # Create the DataFrame
     print(f"Creating DataFrame with data_source={args.data_source}, ability={args.ability}")
-    if args.include_negatives:
-        print(f"Including negative samples with weight={args.neg_weight}, ratio={args.neg_ratio}")
+    print(f"Negative mode: {args.negative_mode}")
+    if args.negative_mode != 'none':
+        neg_desc = f"  Negative weight: {args.neg_weight}"
+        if args.neg_ratio == -1:
+            neg_desc += ", ratio: all (-1)"
+        else:
+            neg_desc += f", ratio: {args.neg_ratio}"
+        print(neg_desc)
     
     df = create_dataframe_from_advantage(
         advantage=advantage,
         data_source=args.data_source,
         ability=args.ability,
         select_all=args.select_all,
-        include_negatives=args.include_negatives,
+        negative_mode=args.negative_mode,
         neg_weight=args.neg_weight,
         neg_ratio=args.neg_ratio
     )
@@ -298,8 +360,14 @@ def main():
     if args.select_all:
         output_dir_name = output_dir_name + "_all"
     
-    if args.include_negatives:
-        output_dir_name = output_dir_name + "_with_neg" + f"_neg_ratio_{args.neg_ratio}_seed_{args.seed}"
+    # Update output dir naming based on negative_mode
+    if args.negative_mode != 'none':
+        neg_suffix = f"_neg_{args.negative_mode}"
+        if args.neg_ratio == -1:
+             neg_suffix += "_ratio_all"
+        else:
+            neg_suffix += f"_ratio_{args.neg_ratio}"
+        output_dir_name = output_dir_name + neg_suffix + f"_seed_{args.seed}"
     
     # Create output directory
     output_dir = os.path.join(args.save_path, output_dir_name)
@@ -307,7 +375,9 @@ def main():
     
     # Split data into train and test sets if requested
     if args.test_split > 0:
-        print(f"Splitting data: {(1 - args.test_split)*100}% train, {args.test_split*100}% test")
+        if not (0 < args.test_split <= 1.0): # Validate proportion
+             raise ValueError("test_split must be between 0.0 and 1.0")
+        print(f"Splitting data: {((1 - args.test_split)*100):.1f}% train, {(args.test_split*100):.1f}% test")
         train_df, test_df = split_train_test(df, args.test_split)
         
         # Save train and test DataFrames
