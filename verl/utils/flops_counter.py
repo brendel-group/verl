@@ -123,8 +123,27 @@ class FlopsCounter:
             estimated_flops (float): The estimated FLOPS based on the input tokens and time.
             promised_flops (float): The expected FLOPS of the current device.
         """
-        tokens_sum = sum(batch_seqlens)
+        # Handle non-iterable or missing input gracefully
+        if not isinstance(batch_seqlens, (list, tuple)) or not batch_seqlens:
+            tokens_sum = 0
+            batch_seqlens_list = [] # Ensure it's an empty list for the specific func
+        else:
+            # Ensure batch_seqlens is treated as a list for sum and passing to func
+            batch_seqlens_list = list(batch_seqlens)
+            try:
+                tokens_sum = sum(batch_seqlens_list)
+            except TypeError: # Should not happen if check above is robust, but for safety
+                 print(f"Warning: TypeError calculating sum of batch_seqlens: {batch_seqlens_list}")
+                 tokens_sum = 0
+                 batch_seqlens_list = []
+
         func = self.estimate_func.get(self.config.model_type, self._estimate_unknown_flops)
-        estimated_flops = func(tokens_sum, batch_seqlens, delta_time)
+        try:
+            # Pass the validated/corrected list and sum
+            estimated_flops = func(tokens_sum, batch_seqlens_list, delta_time)
+        except Exception as e:
+            print(f"Warning: Error during FLOPs estimation function ({func.__name__}): {e}")
+            estimated_flops = 0
+
         promised_flops = get_device_flops()
         return estimated_flops, promised_flops
