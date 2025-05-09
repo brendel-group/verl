@@ -284,7 +284,7 @@ class DataParallelPPOActor(BasePPOActor):
                     clip_ratio_high = self.config.clip_ratio_high if self.config.clip_ratio_high is not None else clip_ratio
                     entropy_coeff = self.config.entropy_coeff
                     use_token_level_loss = self.config.use_token_level_loss
-
+                    clipping_mode = self.config.clipping_mode
                     # all return: (bsz, response_length)
                     entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature)
 
@@ -296,7 +296,8 @@ class DataParallelPPOActor(BasePPOActor):
                         cliprange=clip_ratio,
                         cliprange_low=clip_ratio_low,
                         cliprange_high=clip_ratio_high,
-                        use_token_level_loss=use_token_level_loss)
+                        use_token_level_loss=use_token_level_loss,
+                        clipping_mode=clipping_mode)
                     # compute entropy loss from entropy
                     entropy_loss = verl_F.masked_mean(entropy, response_mask)
 

@@ -322,6 +322,9 @@ class RayPPOTrainer(object):
         if self.advantage_tracking_enabled:
             self.advantage_tracking_freq = getattr(self.config.trainer, 'track_advantages_freq', 1)  # Default: every step
 
+        if self.config.trainer.get('use_ref_for_generation', False):
+            assert self.use_reference_policy, "Cannot use reference policy for generation if no reference policy worker is configured (Role.RefPolicy needed)."
+
         self._validate_config()
         self._create_dataloader()
 
@@ -730,9 +733,17 @@ class RayPPOTrainer(object):
         # create reference policy if needed
         if self.use_reference_policy:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
+            # Determine the role based on whether it will be used for generation
+            ref_role = 'ref'
+            if self.config.trainer.get('use_ref_for_generation', False):
+                 # If used for generation, it needs rollout capabilities.
+                 # Assign 'actor_rollout_ref' role to ensure rollout components are initialized.
+                 ref_role = 'actor_rollout_ref'
+                 print(f"Initializing reference policy worker with role '{ref_role}' because use_ref_for_generation is True.")
+
             ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy],
                                                   config=self.config.actor_rollout_ref,
-                                                  role='ref')
+                                                  role=ref_role) # Use the determined role
             self.resource_pool_to_cls[resource_pool]['ref'] = ref_policy_cls
 
         # create a reward model if reward_fn is None
@@ -762,13 +773,15 @@ class RayPPOTrainer(object):
 
         if self.use_reference_policy:
             self.ref_policy_wg = all_wg['ref']
-            self.ref_policy_wg.init_model()
+            # Init model for the reference policy worker (now potentially with role 'actor_rollout_ref')
+            self.ref_policy_wg.init_model() # Ensure init_model is called
 
         if self.use_rm:
             self.rm_wg = all_wg['rm']
             self.rm_wg.init_model()
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
+        # Note: self.actor_rollout_wg is distinct from self.ref_policy_wg
         self.actor_rollout_wg = all_wg['actor_rollout']
         self.actor_rollout_wg.init_model()
 
@@ -1112,8 +1125,19 @@ class RayPPOTrainer(object):
         
     def _log_metrics_to_jsonl(self, filepath: str, step: int, metrics: dict):
         """Appends a step's metrics to a JSON Lines file."""
+        def convert_value(v):
+            if isinstance(v, torch.Tensor):
+                return v.item() # Use .item() to get standard Python type from tensor
+            elif isinstance(v, np.floating): # Check for any numpy float type
+                return float(v)
+            elif isinstance(v, np.integer): # Check for any numpy integer type
+                 return int(v)
+            # Add checks for other non-serializable types if needed
+            return v
+
         try:
-            log_entry = {"step": step, **metrics}
+            # Ensure all values are JSON serializable
+            log_entry = {"step": step, **{k: convert_value(v) for k, v in metrics.items()}}
             with open(filepath, "a") as f:
                 f.write(json.dumps(log_entry) + "\n")
         except Exception as e:
@@ -1171,10 +1195,12 @@ class RayPPOTrainer(object):
         self.global_steps = 0
 
         # load checkpoint before doing anything
+        print(f'Loading checkpoint from {self.config.trainer.resume_from_path}')
         self._load_checkpoint()
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
+        print(f'Performing validation before training')
         initial_val_step = self.global_steps # Capture the step before training starts (could be 0 or loaded step)
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
             if self.config.trainer.get('skip_val', False):
@@ -1228,7 +1254,10 @@ class RayPPOTrainer(object):
                 with _timer('step', timing_raw):
                     # generate a batch
                     with _timer('gen', timing_raw):
-                        gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+                        if self.config.trainer.get('use_ref_for_generation', False):
+                            gen_batch_output = self.ref_policy_wg.generate_sequences(gen_batch)
+                        else:
+                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
 
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         with _timer('gen_max', timing_raw):
@@ -1356,14 +1385,24 @@ class RayPPOTrainer(object):
 
                     # recompute old_log_probs
                     with _timer('old_log_prob', timing_raw):
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
-                        batch = batch.union(old_log_prob)
+                        if self.config.trainer.get('use_ref_for_generation', False):
+                            # Generate with ref, so "old" log prob IS the ref log prob
+                            with _timer('ref_log_prob', timing_raw):
+                                # Ensure ref_policy_wg exists due to __init__ check
+                                ref_log_prob_output = self.ref_policy_wg.compute_ref_log_prob(batch)
+                                batch = batch.union(ref_log_prob_output)
+                            # Copy ref_log_prob to old_log_probs for PPO update
+                            batch.batch['old_log_probs'] = batch.batch['ref_log_prob']
+                            # Actor's log prob is not needed as 'old_log_probs' here
+                        else:
+                            old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
+                            batch = batch.union(old_log_prob)
 
-                    if self.use_reference_policy:
-                        # compute reference log_prob
-                        with _timer('ref', timing_raw):
-                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-                            batch = batch.union(ref_log_prob)
+                            if self.use_reference_policy:
+                                # compute reference log_prob (only needed if KL penalty/loss is active, but compute anyway for consistency)
+                                with _timer('ref_log_prob', timing_raw):
+                                    ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
+                                    batch = batch.union(ref_log_prob)
 
                     # compute values
                     if self.use_critic:

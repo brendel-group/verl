@@ -273,10 +273,11 @@ def compute_policy_loss(old_log_prob,
                         log_prob,
                         advantages,
                         eos_mask,
-                        cliprange=None,
+                        cliprange=0.2, # Default PPO cliprange
                         cliprange_low=None,
                         cliprange_high=None,
-                        use_token_level_loss=False):
+                        use_token_level_loss=False,
+                        clipping_mode="standard"): # New parameter for clipping strategy
     """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py#L1122
     Args:
         old_log_prob: `(torch.Tensor)`
@@ -288,13 +289,27 @@ def compute_policy_loss(old_log_prob,
         eos_mask: `(torch.Tensor)`
             shape: (bs, response_length)
         cliprange: (float)
-            The clip range used in PPO. See https://arxiv.org/abs/1707.06347
-        cliprange_low: (float)
-            The lower clip range used in PPO.
-        cliprange_high: (float)
-            The higher clip range used in PPO.
+            The PPO clip range. Used when `clipping_mode` is "standard".
+            Defaults to 0.2.
+        cliprange_low: (float, optional)
+            The lower PPO clip range. If provided, overrides `cliprange` for the lower bound.
+            Used when `clipping_mode` is "standard".
+        cliprange_high: (float, optional)
+            The higher PPO clip range. If provided, overrides `cliprange` for the higher bound.
+            Used when `clipping_mode` is "standard".
         use_token_level_loss: (bool)
-            Whether to use token level loss
+            Whether to use token level loss.
+        clipping_mode: (str)
+            Defines the clipping strategy for the policy loss.
+            - "standard": Standard PPO clipping. Ratio is clamped to
+                          `[1-clip_low, 1+clip_high]`. Uses `cliprange`,
+                          `cliprange_low`, `cliprange_high`.
+            - "selective_negative": Clamps ratio to `[0, 1]` where advantages are negative.
+                                    Uses original ratio where advantages are non-negative.
+                                    `cliprange` parameters are ignored.
+            - "none": No clipping is applied to the ratio.
+                      `cliprange` parameters are ignored.
+            Defaults to "standard".
     Returns:
         pg_loss: `a scalar torch.Tensor`
             policy gradient loss computed via PPO
@@ -303,27 +318,59 @@ def compute_policy_loss(old_log_prob,
         ppo_kl: (float)
             the estimated KL divergence between the latest updating policy and the old sampling policy
     """
+
     seq_len_per_sample = torch.clamp(torch.sum(eos_mask, dim=1), min=1.0)
     negative_approx_kl = log_prob - old_log_prob
     ratio = torch.exp(negative_approx_kl)
     ppo_kl = verl_F.masked_mean(-negative_approx_kl, eos_mask)
 
     pg_losses1 = -advantages * ratio
-    if cliprange_low is None:
-        cliprange_low = cliprange
-    if cliprange_high is None:
-        cliprange_high = cliprange
-    pg_losses2 = -advantages * torch.clamp(ratio, 1 - cliprange_low,
-                                           1 + cliprange_high)  # - clip(ratio, 1-cliprange, 1+cliprange) * A
-    pg_losses = torch.maximum(pg_losses1, pg_losses2)  # max(-ratio * A, -clip(ratio, 1-cliprange, 1+cliprange) * A)
+
+    if clipping_mode == "standard":
+        # Determine effective clip ranges for standard PPO clipping 
+        _cliprange_low = cliprange_low if cliprange_low is not None else cliprange
+        _cliprange_high = cliprange_high if cliprange_high is not None else cliprange
+        
+        # Standard PPO clipping for pg_losses2
+        clipped_ratio = torch.clamp(ratio, 1.0 - _cliprange_low, 1.0 + _cliprange_high)
+        pg_losses2 = -advantages * clipped_ratio
+        pg_losses = torch.maximum(pg_losses1, pg_losses2)
+    elif clipping_mode in "selective_negative":
+        # Clip ratio to [0, 1] only where advantages are negative.
+        # For non-negative advantages, use the original ratio (no clipping for this part).
+        clamped_ratio_0_1 = torch.clamp(ratio, 0.0, 1.0)
+        effective_ratio = torch.where(advantages < 0, clamped_ratio_0_1, ratio)
+        pg_losses2 = -advantages * effective_ratio
+        pg_losses = torch.maximum(pg_losses1, pg_losses2) # useless
+    elif clipping_mode == "tapr":
+        # negative tapering
+        # Stage 1: Initial transformation for (adv < 0 and ratio > 1.0) # b minus
+        _current_ratio = torch.where((advantages < 0) & (ratio > 1.0), 1 + torch.log(ratio), ratio)
+        # Stage 2: Zero out elements where (adv < 0 and ratio < 0.0) using the result from Stage 1 # a minus
+        _current_ratio = torch.where((advantages < 0) & (ratio < 0.0), 0.0, _current_ratio)
+
+        # positive tapering
+        # Stage 3: Apply final transformation for (adv > 0 and ratio != 1.0) using the result from Stage 2 # a plus and b plus
+        effective_ratio = torch.where((advantages > 0) & (ratio != 1.0), 1 + torch.log(_current_ratio), _current_ratio)
+        pg_losses2 = -advantages * effective_ratio
+        pg_losses = pg_losses2
+    elif clipping_mode == "none":
+        # No clipping applied to the ratio for pg_losses2
+        pg_losses2 = -advantages * ratio
+        pg_losses = pg_losses2
+    else:
+        raise ValueError(
+            f"Unknown clipping_mode: {clipping_mode}. "
+            "Expected 'standard', 'selective_negative', or 'none'."
+        )
 
     if use_token_level_loss:
         pg_loss = verl_F.masked_mean(pg_losses, eos_mask)
     else:
         pg_loss = torch.sum(pg_losses * eos_mask, dim=1) / seq_len_per_sample
         pg_loss = torch.mean(pg_loss)
-
     pg_clipfrac = verl_F.masked_mean(torch.gt(pg_losses2, pg_losses1).float(), eos_mask)
+
     return pg_loss, pg_clipfrac, ppo_kl
 
 
