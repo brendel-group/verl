@@ -498,11 +498,18 @@ class FSDPSFTTrainer(object):
         # Reduce sequence lengths list across DP ranks (concatenate lists)
         # This assumes each DP rank processes a distinct part of the global batch.
         # Need to gather all sequence lengths processed in this step globally.
-        gathered_batch_seqlens_list = [None] * self.device_mesh.size()
         # Use DP group if SP is enabled, otherwise default FSDP group
         group = self.ulysses_device_mesh.get_group('dp') if self.config.ulysses_sequence_parallel_size > 1 else None
+        
+        # Determine the size of the group for gathering
+        gather_group_size = group.size() if group is not None else torch.distributed.get_world_size()
+
+        # Initialize the list with the correct size based on the gather group
+        gathered_batch_seqlens_list = [None] * gather_group_size
         torch.distributed.all_gather_object(gathered_batch_seqlens_list, batch_seqlens, group=group)
-        global_batch_seqlens = [seqlen for sublist in gathered_batch_seqlens_list for seqlen in sublist]
+        
+        # Flatten the list of lists, adding a check for None just in case
+        global_batch_seqlens = [seqlen for sublist in gathered_batch_seqlens_list if sublist is not None for seqlen in sublist]
 
         # Reduce total tokens across DP ranks (already done implicitly by summing gathered seq lens)
         global_total_tokens_in_step = sum(global_batch_seqlens)
