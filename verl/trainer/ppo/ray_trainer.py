@@ -1195,36 +1195,63 @@ class RayPPOTrainer(object):
         self.global_steps = 0
 
         # load checkpoint before doing anything
-        print(f'Loading checkpoint from {self.config.trainer.resume_from_path}')
-        self._load_checkpoint()
+        print(f'Loading checkpoint. Configured resume_mode: {self.config.trainer.resume_mode}, resume_from_path: {self.config.trainer.resume_from_path}')
+        self._load_checkpoint() # This sets self.global_steps. If resume_mode='disable', self.global_steps remains 0 or its initial value.
+
+
+        # Determine the step for validation logging
+        # If evaluation_step is explicitly passed (e.g., for val_only from a specific model folder), use it.
+        # Otherwise, use the global_steps determined by checkpoint loading.
+        effective_eval_step = self.global_steps # Default to loaded step
+        if hasattr(self.config.trainer, 'evaluation_step') and self.config.trainer.evaluation_step is not None:
+            try:
+                passed_eval_step = int(self.config.trainer.evaluation_step)
+                # Prefer evaluation_step if val_only is true or if it's explicitly for val_before_train
+                if self.config.trainer.get('val_only', False) or self.config.trainer.get('val_before_train', True):
+                    effective_eval_step = passed_eval_step
+                    print(f"Using trainer.evaluation_step ({effective_eval_step}) for validation logging.")
+                elif self.global_steps != passed_eval_step : # If not val_only, but evaluation_step is different, log a warning.
+                     print(f"Warning: trainer.evaluation_step ({passed_eval_step}) is provided, but global_steps from checkpoint is ({self.global_steps}). Using global_steps for ongoing training if not val_only.")
+                     # For non-val_only, effective_eval_step for initial validation might still be evaluation_step if different from self.global_steps
+                     # This part depends on desired behavior: should evaluation_step ALWAYS override for any val log?
+                     # Let's assume for now that if evaluation_step is present, it dictates the step for any validation log it's associated with.
+                     effective_eval_step = passed_eval_step
+
+
+            except ValueError:
+                print(f"Warning: Could not parse trainer.evaluation_step ('{self.config.trainer.evaluation_step}') as int. Using loaded global_steps: {self.global_steps} for validation logging.")
+        
+        initial_val_log_step = effective_eval_step # Use this for the initial validation log
 
         # perform validation before training
-        # currently, we only support validation using the reward_function.
-        print(f'Performing validation before training')
-        initial_val_step = self.global_steps # Capture the step before training starts (could be 0 or loaded step)
+        print(f'Performing validation (logging as step {initial_val_log_step})')
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
             if self.config.trainer.get('skip_val', False):
                 print("Skipping validation")
             else:
                 val_metrics = self._validate()
-                pprint(f'Initial validation metrics (step {initial_val_step}): {val_metrics}')
-                logger.log(data=val_metrics, step=initial_val_step)
+                pprint(f'Initial validation metrics (step {initial_val_log_step}): {val_metrics}')
+                logger.log(data=val_metrics, step=initial_val_log_step)
                 # Log initial metrics to jsonl
                 if val_metrics: # Ensure metrics are not empty
-                    self._log_metrics_to_jsonl(eval_log_path, initial_val_step, val_metrics)
+                    self._log_metrics_to_jsonl(eval_log_path, initial_val_log_step, val_metrics)
 
             if self.advantage_tracking_enabled:
                 #step_init = self.config.trainer.get('step_init', -1)
-                step_init = self.global_steps
-                self._compute_and_save_dataset_advantages(step=step_init, dataset_type='val', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
-                self._compute_and_save_dataset_advantages(step=step_init, dataset_type='train', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
+                # For advantage tracking, use the initial_val_log_step which reflects evaluation_step if provided
+                step_init_adv_track = initial_val_log_step
+                self._compute_and_save_dataset_advantages(step=step_init_adv_track, dataset_type='val', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
+                self._compute_and_save_dataset_advantages(step=step_init_adv_track, dataset_type='train', get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False), return_entropy=self.config.trainer.get('return_entropy', False))
 
             if self.config.trainer.get('val_only', False):
                 return
 
         # we start from step 1 (or the step after load)
-        if self.global_steps <= initial_val_step: # Ensure global_steps increments if starting from 0 or loaded step
-             self.global_steps += 1
+        # If resuming, global_steps is already set. If not (e.g. resume_mode='disable'), it's 0.
+        # Increment only if we are actually starting training steps.
+        if not self.config.trainer.get('val_only', False) and self.global_steps == 0 : # check global_steps too if it was loaded as >0
+             self.global_steps += 1 # Start from step 1 if not resuming and not val_only
+
         total_seen_samples = 0
         last_val_metrics = None
         steps_per_epoch = self.total_training_steps // self.config.trainer.total_epochs
@@ -1268,8 +1295,6 @@ class RayPPOTrainer(object):
                             batch = batch.union(gen_baseline_output)
                             reward_baseline_tensor = self.reward_fn(batch)
                             reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
-
-                            batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
 
                             batch.batch['reward_baselines'] = reward_baseline_tensor
 
@@ -1443,13 +1468,23 @@ class RayPPOTrainer(object):
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and \
                         (is_last_step or  self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer('testing', timing_raw):
+                            # For periodic validation during training, log with current self.global_steps
+                            # unless evaluation_step is meant to override all val logs (less likely for periodic)
+                            # The effective_eval_step logic above was more for initial/val_only.
+                            # For periodic validation, self.global_steps is the most relevant.
+                            current_periodic_val_log_step = self.global_steps
+                            if hasattr(self.config.trainer, 'evaluation_step') and self.config.trainer.evaluation_step is not None and self.config.trainer.get('val_only', False):
+                                # If val_only and evaluation_step is set, periodic validation doesn't occur, but if it did, it should use evaluation_step
+                                current_periodic_val_log_step = int(self.config.trainer.evaluation_step)
+
                             val_metrics: dict = self._validate()
                             if is_last_step:
                                 last_val_metrics = val_metrics
                         metrics.update(val_metrics)
                         # Log periodic/final metrics to jsonl
                         if val_metrics: # Ensure metrics are not empty
-                            self._log_metrics_to_jsonl(eval_log_path, self.global_steps, val_metrics)
+                            self._log_metrics_to_jsonl(eval_log_path, current_periodic_val_log_step, val_metrics)
+                            logger.log(data=val_metrics, step=current_periodic_val_log_step) # also log to wandb etc.
 
                     if self.config.trainer.save_freq > 0 and ( is_last_step or \
                             self.global_steps % self.config.trainer.save_freq == 0):

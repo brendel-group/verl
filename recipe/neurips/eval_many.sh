@@ -1,0 +1,38 @@
+# # done
+# bash recipe/neurips/eval.sh Qwen/Qwen2.5-1.5B
+# bash recipe/neurips/eval.sh Qwen/Qwen2.5-7B
+# bash recipe/neurips/eval.sh tiiuae/Falcon3-1B-Base
+# bash recipe/neurips/eval.sh tiiuae/Falcon3-3B-Base
+# bash recipe/neurips/eval.sh meta-llama/Llama-3.2-1B
+# bash recipe/neurips/eval.sh meta-llama/Llama-3.2-3B
+# bash recipe/neurips/eval.sh Qwen/Qwen2.5-3B
+
+# # yet to be done
+# bash recipe/neurips/eval.sh tiiuae/Falcon3-7B-Base
+# bash recipe/neurips/eval.sh Qwen/Qwen2.5-14B
+# bash recipe/neurips/eval.sh meta-llama/Llama-3.1-8B
+
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_DeepSeek-R1-Distill-Qwen-7B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_epochs_5_lr_1e-6_bsz_512_micro_bsz_512/global_step_30
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-3B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_epochs_5_lr_1e-6_bsz_512_micro_bsz_512/global_step_50
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-7B_openai_math_n_8_bsz_512_epochs_10_kl_coef_0.0_step_0_epochs_5_lr_1e-6_bsz_512_micro_bsz_512/global_step_50
+
+# May 9
+
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-14B_openai_math_n_8_bsz_128_epochs_1_kl_coef_0.0_step_0_3b_7b_14b_epochs_5_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-14B_openai_math_n_8_bsz_128_epochs_1_kl_coef_0.0_step_0_3b_7b_14b_epochs_5_lr_1e-6_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-3B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_3b_7b_14b_epochs_5_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-3B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_3b_7b_14b_epochs_5_lr_1e-6_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-7B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_3b_7b_14b_epochs_5_lr_1e-6_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-7B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_3b_7b_14b_epochs_5_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/
+
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_openai_math_epochs_2_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_7b_base_sft_data_openai_math_epochs_2_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/
+
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_7b_base_sft_data_Qwen2.5-14B_openai_math_n_8_bsz_128_epochs_1_kl_coef_0.0_step_0_7b_14b_epochs_4_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_7b_base_sft_data_Qwen2.5-14B_openai_math_n_8_bsz_128_epochs_1_kl_coef_0.0_step_0_7b_14b_epochs_4_lr_1e-6_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_7b_base_sft_data_Qwen2.5-7B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_7b_14b_epochs_4_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_7b_base_sft_data_Qwen2.5-7B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_7b_14b_epochs_4_lr_1e-6_bsz_256_micro_bsz_256_total_training_steps_90/
+
+# need to run this
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_7b_base_sft_data_openai_math_epochs_2_lr_1e-5_bsz_256_micro_bsz_256_total_training_steps_90/ 66
+bash recipe/neurips/eval.sh /fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/qwen_2.5_3b_base_sft_data_Qwen2.5-3B_openai_math_n_8_bsz_512_epochs_1_kl_coef_0.0_step_0_3b_7b_14b_epochs_5_lr_1e-6_bsz_256_micro_bsz_256_total_training_steps_90/ 60

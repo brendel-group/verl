@@ -137,7 +137,7 @@ python3 -m verl.trainer.main_ppo \
     +trainer.val_before_train=True \
     trainer.test_freq=1 \
     trainer.save_freq=5 \
-    trainer.track_advantages=False \
+    trainer.track_advantages=True \
     trainer.track_advantages_freq=5 \
     trainer.total_epochs=${num_epochs} \
     trainer.default_local_dir="${CKPTS_DIR}" \
