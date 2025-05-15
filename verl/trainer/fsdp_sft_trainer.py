@@ -310,11 +310,22 @@ class FSDPSFTTrainer(object):
                 f'Number of steps/epoch {self.steps_per_epoch}, number of epochs {self.config.trainer.total_epochs}, total number of steps {self.total_steps}'
             )
 
-        num_warmup_steps = int(self.total_steps * self.config.optim.warmup_steps_ratio)
+        # Add scheduler type selection
+        scheduler_type = getattr(self.config.optim, "scheduler_type", "cosine") # Default to cosine
 
-        self.lr_scheduler = get_cosine_schedule_with_warmup(optimizer=self.optimizer,
-                                                            num_warmup_steps=num_warmup_steps,
-                                                            num_training_steps=self.total_steps)
+        if scheduler_type == "cosine":
+            num_warmup_steps = int(self.total_steps * self.config.optim.warmup_steps_ratio)
+            self.lr_scheduler = get_cosine_schedule_with_warmup(optimizer=self.optimizer,
+                                                                num_warmup_steps=num_warmup_steps,
+                                                                num_training_steps=self.total_steps)
+        elif scheduler_type == "steplr":
+            step_size = getattr(self.config.optim, "step_lr_step_size", 1000) # Default step_size
+            gamma = getattr(self.config.optim, "step_lr_gamma", 0.1) # Default gamma
+            self.lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=self.optimizer,
+                                                                step_size=step_size,
+                                                                gamma=gamma)
+        else:
+            raise ValueError(f"Unsupported scheduler type: {scheduler_type}")
 
     def _compute_loss_and_backward(self, batch, do_backward=True):
         """Compute loss with optional sequence parallelism and remove padding features"""

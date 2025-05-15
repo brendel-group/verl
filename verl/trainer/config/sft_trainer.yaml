@@ -32,6 +32,9 @@ optim:
   warmup_steps_ratio: 0.1
   clip_grad: 1.0
   use_likelihood_loss: False
+  scheduler_type: cosine
+  step_lr_step_size: 1000
+  step_lr_gamma: 0.1
 ulysses_sequence_parallel_size: 1
 use_remove_padding: False
 trainer:
