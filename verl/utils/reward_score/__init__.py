@@ -21,9 +21,9 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval', 'HuggingFaceH4/aime_2024', 'bethgelab/CuratedThoughts', 
                          'agentica-org/DeepScaleR-Preview-Dataset', 'SynthLabsAI/Big-Math-RL-Verified', 
                          'HuggingFaceH4/MATH-500', 'simplescaling/openaimath', 'agentica-org/DeepScaleR-Preview-Dataset', 'deepscaler', 
-                         'math-ai/olympiadbench', 'math-ai/aime25', 'math-ai/gpqa', 'math-ai/minervamath', 'math-ai/amc23']:
-        #from . import math
-        #res = math.compute_score(solution_str, ground_truth)
+                         'math-ai/olympiadbench', 'math-ai/aime25', 'math-ai/aime24', 'math-ai/gpqa', 'math-ai/minervamath', 'math-ai/amc23', 'LuyiCui/MATH']:
+        # from . import math
+        # res = math.compute_score(solution_str, ground_truth)
 
         # Use Math-Verify (https://github.com/huggingface/Math-Verify) for better evaluation accuracy
         from . import math_verify

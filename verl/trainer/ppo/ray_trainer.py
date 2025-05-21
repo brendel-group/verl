@@ -316,7 +316,8 @@ class RayPPOTrainer(object):
         self.advantage_tracking_enabled = getattr(self.config.trainer, 'track_advantages', False)
         self.advantage_tracking_path = getattr(self.config.trainer, 'track_advantages_path', 
                                                 os.path.join(self.config.trainer.default_local_dir, 'advantage_tracking'))
-        os.makedirs(self.advantage_tracking_path, exist_ok=True)
+        if self.advantage_tracking_enabled or self.config.trainer.get('advantage_tracking_only', False):
+             os.makedirs(self.advantage_tracking_path, exist_ok=True)
 
 
         if self.advantage_tracking_enabled:
@@ -465,7 +466,7 @@ class RayPPOTrainer(object):
                                        max_prompt_length=self.config.data.max_prompt_length,
                                        filter_prompts=True,
                                        return_raw_chat=self.config.data.get('return_raw_chat', False),
-                                       truncation='error',
+                                       truncation=self.config.data.truncation,
                                        filter_overlong_prompts=self.config.data.filter_overlong_prompts)
         
         if self.config.data.val_batch_size is None:
@@ -1202,26 +1203,46 @@ class RayPPOTrainer(object):
         # Determine the step for validation logging
         # If evaluation_step is explicitly passed (e.g., for val_only from a specific model folder), use it.
         # Otherwise, use the global_steps determined by checkpoint loading.
-        effective_eval_step = self.global_steps # Default to loaded step
+        effective_eval_step = self.global_steps 
         if hasattr(self.config.trainer, 'evaluation_step') and self.config.trainer.evaluation_step is not None:
             try:
                 passed_eval_step = int(self.config.trainer.evaluation_step)
-                # Prefer evaluation_step if val_only is true or if it's explicitly for val_before_train
-                if self.config.trainer.get('val_only', False) or self.config.trainer.get('val_before_train', True):
-                    effective_eval_step = passed_eval_step
-                    print(f"Using trainer.evaluation_step ({effective_eval_step}) for validation logging.")
-                elif self.global_steps != passed_eval_step : # If not val_only, but evaluation_step is different, log a warning.
-                     print(f"Warning: trainer.evaluation_step ({passed_eval_step}) is provided, but global_steps from checkpoint is ({self.global_steps}). Using global_steps for ongoing training if not val_only.")
-                     # For non-val_only, effective_eval_step for initial validation might still be evaluation_step if different from self.global_steps
-                     # This part depends on desired behavior: should evaluation_step ALWAYS override for any val log?
-                     # Let's assume for now that if evaluation_step is present, it dictates the step for any validation log it's associated with.
-                     effective_eval_step = passed_eval_step
-
-
+                effective_eval_step = passed_eval_step # Prioritize if passed
+                print(f"Using trainer.evaluation_step ({effective_eval_step}) for current operation (validation/advantage tracking step).")
             except ValueError:
-                print(f"Warning: Could not parse trainer.evaluation_step ('{self.config.trainer.evaluation_step}') as int. Using loaded global_steps: {self.global_steps} for validation logging.")
+                print(f"Warning: Could not parse trainer.evaluation_step ('{self.config.trainer.evaluation_step}') as int. Using loaded global_steps: {self.global_steps} for current operation.")
         
-        initial_val_log_step = effective_eval_step # Use this for the initial validation log
+        advantage_tracking_step_for_saving = effective_eval_step # Step to use for naming advantage files
+
+        if self.config.trainer.get('advantage_tracking_only', False):
+            print(f"Advantage tracking only mode enabled. Tracking for step: {advantage_tracking_step_for_saving}")
+            
+            # Ensure advantage_tracking_path is created (already handled in __init__ modification)
+
+            if not self.advantage_tracking_enabled and not self.config.trainer.get('track_advantages', False):
+                # This condition implies trainer.track_advantages was initially false.
+                # The __init__ modification for os.makedirs might not have run if only advantage_tracking_only was true but track_advantages was false.
+                # Let's ensure it's created.
+                print("Ensuring advantage_tracking_path exists as 'advantage_tracking_only' is True.")
+                os.makedirs(self.advantage_tracking_path, exist_ok=True)
+
+
+            self._compute_and_save_dataset_advantages(
+                step=advantage_tracking_step_for_saving, 
+                dataset_type='train',
+                get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False),
+                return_entropy=self.config.trainer.get('return_entropy', False)
+            )
+            self._compute_and_save_dataset_advantages(
+                step=advantage_tracking_step_for_saving, 
+                dataset_type='val',
+                get_gt_log_prob=self.config.trainer.get('get_gt_log_prob', False),
+                return_entropy=self.config.trainer.get('return_entropy', False)
+            )
+            print(f"Advantage tracking complete for step {advantage_tracking_step_for_saving}. Exiting.")
+            return # Exit after tracking
+        
+        initial_val_log_step = effective_eval_step # Use this for the initial validation log if not in advantage_tracking_only mode
 
         # perform validation before training
         print(f'Performing validation (logging as step {initial_val_log_step})')

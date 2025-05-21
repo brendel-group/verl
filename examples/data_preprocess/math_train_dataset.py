@@ -32,30 +32,47 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--local_dir', default='~/data/math')
     parser.add_argument('--hdfs_dir', default=None)
+    parser.add_argument('--follow_instruction', action='store_true')
 
     args = parser.parse_args()
 
     # 'lighteval/MATH' is no longer available on huggingface.
     # Use mirror repo: DigitalLearningGmbH/MATH-lighteval
-    data_source = 'DigitalLearningGmbH/MATH-lighteval'
+    #data_source = 'DigitalLearningGmbH/MATH-lighteval'
+    data_source = 'LuyiCui/MATH'
     print(f"Loading the {data_source} dataset from huggingface...", flush=True)
     dataset = datasets.load_dataset(data_source, trust_remote_code=True)
 
+    # data source change
+    data_source = 'simplescaling/openaimath'
+
     train_dataset = dataset['train']
     test_dataset = dataset['test']
-
-    instruction_following = "Let's think step by step and output the final answer within \\boxed{}."
+    if not args.follow_instruction:
+        instruction_following = ""
+    else:
+        instruction_following = " Let's think step by step and output the final answer within \\boxed{}."
 
     # add a row to each data item that represents a unique id
     def make_map_fn(split):
 
         def process_fn(example, idx):
             question = example.pop('problem')
-            
-            question = question + ' ' + instruction_following
+
+            question = question + instruction_following
 
             answer = example.pop('solution')
+            ans = example.pop('answer')
+            unique_id = example.pop('unique_id')
+            subject = example.pop('subject')
+            level = example.pop('level')
             solution = extract_solution(answer)
+            try:
+                solution == ans
+            except:
+                print(solution)
+                print(ans)
+                raise Exception('Solution and answer do not match')
             data = {
                 "data_source": data_source,
                 "prompt": [{
@@ -69,7 +86,12 @@ if __name__ == '__main__':
                 },
                 "extra_info": {
                     'split': split,
-                    'index': idx
+                    'index': idx,
+                    'answer': answer,
+                    'solution': answer,
+                    'subject': subject,
+                    'level': level,
+                    'unique_id': unique_id
                 }
             }
             return data
@@ -81,9 +103,12 @@ if __name__ == '__main__':
 
     local_dir = args.local_dir
     hdfs_dir = args.hdfs_dir
-
-    train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
-    test_dataset.to_parquet(os.path.join(local_dir, 'test.parquet'))
+    if args.follow_instruction:
+        train_dataset.to_parquet(os.path.join(local_dir, 'train.parquet'))
+        test_dataset.to_parquet(os.path.join(local_dir, 'test.parquet'))
+    else:
+        train_dataset.to_parquet(os.path.join(local_dir, 'train_no_instruction.parquet'))
+        test_dataset.to_parquet(os.path.join(local_dir, 'test_no_instruction.parquet'))
 
     if hdfs_dir is not None:
         makedirs(hdfs_dir)
