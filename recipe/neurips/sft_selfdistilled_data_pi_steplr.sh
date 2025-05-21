@@ -6,11 +6,14 @@ set -x
 # prompt_dict_keys = ['content'] (question for standard GSM8K)
 # response_dict_keys = ['answer'] (answer for standard GSM8K)
 
-epochs=4
-lr=$2
-bsz=256 #for 7b even 512 works
-micro_bsz=256
-total_training_steps=90
+epochs=30
+lr=1e-5
+bsz=128 #for 7b even 512 works
+micro_bsz=128
+total_training_steps=150
+scheduler_type=steplr
+step_lr_step_size=1000
+step_lr_gamma=0.1
 #dir=qwen2.5_1.5b_grpo_gsm8k_epochs_2_rollouts_5_no_kl_step_0
 # dir=qwen2.5_1.5b_grpo_gsm8k_epochs_2_rollouts_5_no_kl_step_0
 # dir_val=qwen2.5_1.5b_grpo_gsm8k_epochs_2_rollouts_5_no_kl_step_0
@@ -19,21 +22,21 @@ total_training_steps=90
 #dir=Qwen2.5-7B_openai_math_n_8_bsz_512_epochs_10_kl_coef_0.0_step_0
 #dir=Qwen2.5-7B_openai_math_n_8_bsz_512_epochs_10_kl_coef_0.0_step_0_single_datapoint_5645
 dir=$1
-experiment_name=qwen_2.5_7b_base_sft_data_${dir}_7b_14b_epochs_${epochs}_lr_${lr}_bsz_${bsz}_micro_bsz_${micro_bsz}_total_training_steps_${total_training_steps}
+experiment_name=qwen_2.5_math_1.5b_base_sft_data_${dir}_epochs_${epochs}_scheduler_${scheduler_type}_lr_${lr}_bsz_${bsz}_total_training_steps_${total_training_steps}
 save_path=/fast/pmayilvahanan/post_training/verl_checkpoints/self_distillation_neurips/Qwen/$experiment_name
-model_path=Qwen/Qwen2.5-7B
-nproc_per_node=8
+model_path=Qwen/Qwen2.5-Math-1.5B
+n_gpus_per_node=4
 
 # Shift the arguments so $@ refers to the rest
 shift 2
 
-torchrun --standalone --nnodes=1 --nproc_per_node=$nproc_per_node \
+torchrun --standalone --nnodes=1 --nproc_per_node=${n_gpus_per_node} \
      -m verl.trainer.fsdp_sft_trainer \
-    data.train_files=/fast/pmayilvahanan/post_training/self_distilled_datasets_neurips/${dir}/train_common_indices_7_14.parquet \
+    data.train_files=/fast/pmayilvahanan/post_training/self_distilled_datasets_neurips/${dir}/train.parquet \
     data.val_files=/fast/pmayilvahanan/post_training/self_distilled_datasets_neurips/openai_math/test.parquet \
     data.prompt_key=prompt \
     data.response_key=extra_info \
-    data.max_length=5120 \
+    data.max_length=4096 \
     data.truncation=right \
     optim.lr=$lr \
     optim.use_likelihood_loss=False \
@@ -49,9 +52,12 @@ torchrun --standalone --nnodes=1 --nproc_per_node=$nproc_per_node \
     trainer.logger=['console','wandb'] \
     trainer.total_epochs=$epochs \
     trainer.total_training_steps=$total_training_steps \
-    +trainer.save_checkpoint_steps=6 \
-    +trainer.validate_every_n_steps=6 \
+    +trainer.save_checkpoint_steps=10 \
+    +trainer.validate_every_n_steps=10 \
     trainer.default_hdfs_dir=null \
     +trainer.save_config=True \
     ulysses_sequence_parallel_size=2 \
+    optim.scheduler_type=$scheduler_type \
+    optim.step_lr_step_size=$step_lr_step_size \
+    optim.step_lr_gamma=$step_lr_gamma \
     use_remove_padding=true 

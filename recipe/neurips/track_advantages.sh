@@ -1,78 +1,71 @@
 #!/usr/bin/env bash
 # Usage:
-#   bash recipe/neurips/eval.sh /path/to/experiment_folder [start_step]
+#   bash recipe/neurips/track_advantages.sh /path/to/experiment_folder [start_step]
 #
-# This script evaluates Hugging Face model checkpoints found within the specified
-# /path/to/experiment_folder. It looks for subdirectories named "global_step_X".
+# This script performs advantage tracking for Hugging Face model checkpoints
+# found within the specified /path/to/experiment_folder.
+# It looks for subdirectories named "global_step_X".
 #
 # Arguments:
 #   /path/to/experiment_folder: (Required) The main directory containing
 #                               global_step_* checkpoint subdirectories.
 #                               If a path to a specific global_step_X directory
-#                               is given, only that checkpoint is evaluated.
+#                               is given, only that checkpoint is processed.
 #   start_step:                 (Optional) An integer. If provided, only checkpoints
 #                               with a step number (X) greater than or equal to
-#                               start_step will be evaluated.
+#                               start_step will be processed.
 #
-# The script iterates through each qualifying checkpoint, loads it as a base model
-# (not resuming training state), and runs validation using verl.trainer.main_ppo.
-# Evaluation results (metrics) are appended to an 'eval.jsonl' file located
-# in /path/to/experiment_folder. Each entry in eval.jsonl will be tagged
-# with the corresponding step number.
+# Advantage tracking results will be saved in an 'advantage_tracking' subdirectory
+# within /path/to/experiment_folder (e.g., .../advantage_tracking/advantages_train_step_X.pt).
 set -euxo pipefail
 
-project_name='self_distillation_neurips'
+project_name='self_distillation_neurips' # Or make this configurable
 
+# Default values, similar to eval.sh, adjust if necessary for advantage tracking
 adv_estimator=grpo
-
 kl_coef=0.0
 kl_loss_coef=0.0
-
 clip_ratio_low=0.2
 clip_ratio_high=0.28
-
 enable_overlong_buffer=False
 overlong_buffer_len=512
 overlong_penalty_factor=1.0
-
-enable_filter_groups=True
+enable_filter_groups=True # Usually enabled for training, might be relevant for how model was trained
 filter_groups_metric=seq_final_reward
 fill_to_train_bsz=True
-train_prompt_bsz=512 # 512 works for 7B n = 8
-multiplier=3 # 3 works for 7B n = 8
+train_prompt_bsz=64
+multiplier=2
 gen_prompt_bsz=$((train_prompt_bsz * multiplier))
 train_prompt_mini_bsz=128
+# train_micro_batch_size needs to be determined based on GPU memory for generation/logprob, not training updates
+# For advantage tracking, actual training updates are skipped.
+# However, logprob computation still happens.
+# Let's keep train_micro_batch_size, but it might be less critical than for actual training.
 train_micro_batch_size=64
-val_batch_size=512
+val_batch_size=512 # Used for creating val dataloader for advantage tracking
 
-num_epochs=10
+num_epochs=1 # Not used for advantage_tracking_only, but script expects it
 
-num_rollouts=8
-val_kwargs_n=${num_rollouts}
+num_rollouts=8 # This is actor_rollout_ref.rollout.n
+val_kwargs_n=${num_rollouts} # n for validation generation part of advantage tracking
 n_resp_per_prompt=${num_rollouts}
-n_advantage_tracking=${num_rollouts}
+# n_advantage_tracking should be set in config if different from num_rollouts
+# For the script, ensure actor_rollout_ref.rollout.n_advantage_tracking can be overridden if needed
+n_advantage_tracking=${num_rollouts} # Defaulting to num_rollouts, can be overridden by config
 
-use_token_level_loss=False # TRUE for DAPO token level loss
+use_token_level_loss=False # DAPO specific, usually False for PPO reward shaping
 
-# Ray
-# RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
-# WORKING_DIR=${WORKING_DIR:-"${PWD}"}
-# RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
-#NNODES=${NNODES:-4}
+# Ray (mostly not critical for advantage_tracking_only on a single node setup, but kept for consistency)
 NNODES=1
-n_gpus_per_node=4
+n_gpus_per_node=4 # Adjust based on your setup for generation/logprob compute
 
 # Paths
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/fast/pmayilvahanan/"}
-# INPUT_PATH is the first argument to the script.
-# It can be /path/to/exp_dir or /path/to/exp_dir/global_step_X
 INPUT_PATH=$1
-# START_STEP_ARG is the optional second argument.
-START_STEP_ARG=${2:-""} # Default to empty string if not provided
+START_STEP_ARG=${2:-""}
 
-# Determine the main experiment directory and specific checkpoint paths to evaluate
-declare -a CHECKPOINT_FULL_PATHS_TO_EVAL
-declare -a TEMP_CHECKPOINT_PATHS_TO_EVAL # Used for initial find before filtering
+declare -a CHECKPOINT_FULL_PATHS_TO_PROCESS
+declare -a TEMP_CHECKPOINT_PATHS_TO_PROCESS
 MAIN_EXPERIMENT_DIR=""
 
 if [[ ! -e "$INPUT_PATH" ]]; then
@@ -81,20 +74,16 @@ if [[ ! -e "$INPUT_PATH" ]]; then
 fi
 
 if [[ "$INPUT_PATH" == *"global_step_"* ]] && [ -d "$INPUT_PATH" ]; then
-    # Input is a specific checkpoint directory
-    TEMP_CHECKPOINT_PATHS_TO_EVAL=("$INPUT_PATH")
+    TEMP_CHECKPOINT_PATHS_TO_PROCESS=("$INPUT_PATH")
     MAIN_EXPERIMENT_DIR=$(dirname "$INPUT_PATH")
 elif [ -d "$INPUT_PATH" ]; then
-    # Input is a parent directory, find all global_step_* subdirectories
     MAIN_EXPERIMENT_DIR="$INPUT_PATH"
-    # Use find and map to an array, sorting by step number
-    mapfile -t TEMP_CHECKPOINT_PATHS_TO_EVAL < <(find "$MAIN_EXPERIMENT_DIR" -maxdepth 1 -type d -name "global_step_*" | sort -V)
-    if [ ${#TEMP_CHECKPOINT_PATHS_TO_EVAL[@]} -eq 0 ]; then
+    mapfile -t TEMP_CHECKPOINT_PATHS_TO_PROCESS < <(find "$MAIN_EXPERIMENT_DIR" -maxdepth 1 -type d -name "global_step_*" | sort -V)
+    if [ ${#TEMP_CHECKPOINT_PATHS_TO_PROCESS[@]} -eq 0 ]; then
         echo "No global_step_* directories found in $MAIN_EXPERIMENT_DIR."
-        # Check if MAIN_EXPERIMENT_DIR itself might be a checkpoint (e.g. downloaded from elsewhere)
         if [[ "$MAIN_EXPERIMENT_DIR" == *"global_step_"* ]]; then
              echo "Treating $MAIN_EXPERIMENT_DIR as a single checkpoint directory."
-             TEMP_CHECKPOINT_PATHS_TO_EVAL=("$MAIN_EXPERIMENT_DIR")
+             TEMP_CHECKPOINT_PATHS_TO_PROCESS=("$MAIN_EXPERIMENT_DIR")
         else
             echo "Exiting."
             exit 1
@@ -105,88 +94,64 @@ else
     exit 1
 fi
 
-# Filter checkpoints if START_STEP_ARG is provided
 if [[ -n "$START_STEP_ARG" ]]; then
     echo "Filtering checkpoints to start from step: $START_STEP_ARG"
-    for ckpt_path_candidate in "${TEMP_CHECKPOINT_PATHS_TO_EVAL[@]}"; do
-        # Extract step number from path (e.g., global_step_100 -> 100)
+    for ckpt_path_candidate in "${TEMP_CHECKPOINT_PATHS_TO_PROCESS[@]}"; do
         step_num_from_path=$(basename "$ckpt_path_candidate" | sed 's/global_step_//')
-        # Check if step_num_from_path is a valid number before comparison
         if [[ "$step_num_from_path" =~ ^[0-9]+$ ]] && [ "$step_num_from_path" -ge "$START_STEP_ARG" ]; then
-            CHECKPOINT_FULL_PATHS_TO_EVAL+=("$ckpt_path_candidate")
+            CHECKPOINT_FULL_PATHS_TO_PROCESS+=("$ckpt_path_candidate")
         fi
     done
-    if [ ${#CHECKPOINT_FULL_PATHS_TO_EVAL[@]} -eq 0 ]; then
-        echo "No checkpoints found at or after step $START_STEP_ARG in $MAIN_EXPERIMENT_DIR (from initial list of ${#TEMP_CHECKPOINT_PATHS_TO_EVAL[@]} checkpoints)."
-        exit 0 # Exit gracefully if no checkpoints match the criteria
+    if [ ${#CHECKPOINT_FULL_PATHS_TO_PROCESS[@]} -eq 0 ]; then
+        echo "No checkpoints found at or after step $START_STEP_ARG in $MAIN_EXPERIMENT_DIR (from initial list of ${#TEMP_CHECKPOINT_PATHS_TO_PROCESS[@]} checkpoints)."
+        exit 0
     fi
 else
-    echo "No start step specified, evaluating all found checkpoints."
-    CHECKPOINT_FULL_PATHS_TO_EVAL=("${TEMP_CHECKPOINT_PATHS_TO_EVAL[@]}")
+    echo "No start step specified, processing all found checkpoints."
+    CHECKPOINT_FULL_PATHS_TO_PROCESS=("${TEMP_CHECKPOINT_PATHS_TO_PROCESS[@]}")
 fi
 
-# Common settings for python script invocation
-# trainer.default_local_dir will be MAIN_EXPERIMENT_DIR for storing eval.jsonl
 DEFAULT_LOCAL_DIR_FOR_PYTHON="${MAIN_EXPERIMENT_DIR}"
-# trainer.experiment_name can be the basename of the main experiment dir
 EXPERIMENT_NAME_FOR_PYTHON=$(basename "${MAIN_EXPERIMENT_DIR}")
-# trainer.resume_from_path should be False to use resume_mode path
-RESUME_FROM_PATH_FOR_PYTHON=False
-# Ensure validation only mode
-VAL_ONLY_FOR_PYTHON=True
-VAL_BEFORE_TRAIN_FOR_PYTHON=True # Ensures validation runs
+#dataset_name=${dataset_name:-'openai_math'}
+#TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/${dataset_name}/train.parquet"}
+dataset_name='dsr_sub'
+TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/rl_training_one_example/dsr_sub.parquet"}
 
-dataset_name=${dataset_name:-'openai_math'} # Ensure dataset_name is set
-TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/datasets/${dataset_name}/train.parquet"} # dataset_name is defined below, or use a default
+# For advantage tracking, we might want to use the same val files as eval for consistency
+VAL_FILES_STR="[/fast/pmayilvahanan/datasets/openai_math/test.parquet]" # Define your val files for advantage tracking
 
-# Loop through each checkpoint directory and run evaluation
-for CHECKPOINT_PATH_FOR_PYTHON in "${CHECKPOINT_FULL_PATHS_TO_EVAL[@]}"; do
+# Loop through each checkpoint directory and run advantage tracking
+for CHECKPOINT_PATH_FOR_PYTHON in "${CHECKPOINT_FULL_PATHS_TO_PROCESS[@]}"; do
     echo "----------------------------------------------------"
-    echo "Evaluating checkpoint: $CHECKPOINT_PATH_FOR_PYTHON"
-    echo "Output eval.jsonl will be in: ${DEFAULT_LOCAL_DIR_FOR_PYTHON}/eval.jsonl"
-    echo "Experiment name for logging: ${EXPERIMENT_NAME_FOR_PYTHON}"
+    echo "Processing checkpoint for advantage tracking: $CHECKPOINT_PATH_FOR_PYTHON"
+    echo "Output advantage files will be in: ${DEFAULT_LOCAL_DIR_FOR_PYTHON}/advantage_tracking/"
+    echo "Experiment name for logging context: ${EXPERIMENT_NAME_FOR_PYTHON}"
     echo "----------------------------------------------------"
 
-    # Extract step number from checkpoint path
     STEP_NUM_FOR_LOGGING=""
     if [[ "$CHECKPOINT_PATH_FOR_PYTHON" == *"global_step_"* ]]; then
         STEP_NUM_FOR_LOGGING=$(basename "$CHECKPOINT_PATH_FOR_PYTHON" | sed 's/global_step_//')
     else
-        # Fallback or error if step number can't be determined, though find should ensure format
         echo "Warning: Could not determine step number from $CHECKPOINT_PATH_FOR_PYTHON. Using 0."
         STEP_NUM_FOR_LOGGING="0"
     fi
-    echo "Step number for logging: ${STEP_NUM_FOR_LOGGING}"
+    echo "Step number for advantage file naming: ${STEP_NUM_FOR_LOGGING}"
 
-    # MODEL_PATH_FOR_PYTHON for actor_rollout_ref.model.path is the specific checkpoint
-    # RESUME_MODE_FOR_PYTHON will be "disable" to load as a base model
-    # EVALUATION_STEP_FOR_PYTHON will pass the extracted step number for logging
-
-    # The MODEL_PATH variable in the original script is now CHECKPOINT_PATH_FOR_PYTHON for actor path
-    # The exp_name variable is EXPERIMENT_NAME_FOR_PYTHON
-    # The CKPTS_DIR variable is DEFAULT_LOCAL_DIR_FOR_PYTHON
-    # resume_mode is now 'disable'
-    # resume_from_path variable is RESUME_FROM_PATH_FOR_PYTHON (still False)
-
-    # Algorithm
-    ## Train
     max_prompt_length=$((1024 * 1))
     max_response_length=$((1024 * 3))
-    ## Validation
-    val_top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
+    val_top_k=-1 # Affects generation if _compute_and_save_dataset_advantages performs generation
 
-    # Mathematically equivalent
-    use_dynamic_bsz=True
-    infer_micro_batch_size=null
-    train_micro_batch_size=null
-    offload=False
-    #    data.val_files=[/fast/pmayilvahanan/datasets/openai_math/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet,/fast/pmayilvahanan/datasets/olympiad_bench/test.parquet,/fast/pmayilvahanan/datasets/gpqa/test.parquet,/fast/pmayilvahanan/datasets/minervamath/test.parquet,/fast/pmayilvahanan/datasets/amc23/test.parquet,/fast/pmayilvahanan/datasets/aime_2025/test.parquet] \
-    #    data.val_files=[/fast/pmayilvahanan/datasets/openai_math/test.parquet,/fast/pmayilvahanan/datasets/aime_2024/test.parquet,/fast/pmayilvahanan/datasets/olympiad_bench/test.parquet,/fast/pmayilvahanan/datasets/gpqa/test.parquet,/fast/pmayilvahanan/datasets/minervamath/test.parquet,/fast/pmayilvahanan/datasets/amc23/test.parquet,/fast/pmayilvahanan/datasets/aime_2025/test.parquet] \
-    # ray job submit --no-wait --runtime-env="${RUNTIME_ENV}" \
-    #     --working-dir "${WORKING_DIR}" \
+    use_dynamic_bsz=True # Recommended
+    infer_micro_batch_size=null # Set to null if use_dynamic_bsz=True
+    # train_micro_batch_size is already set above, but might not be used if dynamic_bsz=True
+    offload=False # Usually for large models
+
+    # Note: Many parameters below are for full PPO. Advantage tracking mode should bypass most of them.
+    # However, data loading, model loading, and generation/logprob computation parameters are relevant.
     python3 -m verl.trainer.main_ppo \
         data.train_files="${TRAIN_FILE}" \
-        data.val_files=[/fast/pmayilvahanan/datasets/openai_math/test.parquet] \
+        data.val_files="${VAL_FILES_STR}" \
         data.prompt_key=prompt \
         data.truncation='left' \
         data.max_prompt_length=${max_prompt_length} \
@@ -194,7 +159,6 @@ for CHECKPOINT_PATH_FOR_PYTHON in "${CHECKPOINT_FULL_PATHS_TO_EVAL[@]}"; do
         data.gen_batch_size=${gen_prompt_bsz} \
         data.train_batch_size=${train_prompt_bsz} \
         data.val_batch_size=${val_batch_size} \
-        data.truncation='left' \
         actor_rollout_ref.rollout.n=${n_resp_per_prompt} \
         actor_rollout_ref.rollout.n_advantage_tracking=${n_advantage_tracking} \
         actor_rollout_ref.rollout.val_kwargs.n=${val_kwargs_n} \
@@ -228,7 +192,6 @@ for CHECKPOINT_PATH_FOR_PYTHON in "${CHECKPOINT_FULL_PATHS_TO_EVAL[@]}"; do
         actor_rollout_ref.actor.entropy_coeff=0 \
         actor_rollout_ref.actor.grad_clip=1.0 \
         actor_rollout_ref.actor.use_token_level_loss=${use_token_level_loss} \
-        actor_rollout_ref.actor.use_token_level_loss=True \
         actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
         actor_rollout_ref.rollout.gpu_memory_utilization=0.75 \
         actor_rollout_ref.rollout.log_prob_micro_batch_size=${infer_micro_batch_size} \
@@ -236,7 +199,7 @@ for CHECKPOINT_PATH_FOR_PYTHON in "${CHECKPOINT_FULL_PATHS_TO_EVAL[@]}"; do
         actor_rollout_ref.rollout.enable_chunked_prefill=True \
         actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
         actor_rollout_ref.rollout.val_kwargs.top_k="${val_top_k}" \
-        actor_rollout_ref.rollout.val_kwargs.top_p=1.0\
+        actor_rollout_ref.rollout.val_kwargs.top_p=1.0 \
         actor_rollout_ref.rollout.val_kwargs.temperature=1.0 \
         actor_rollout_ref.rollout.val_kwargs.do_sample=True \
         actor_rollout_ref.ref.log_prob_micro_batch_size=${infer_micro_batch_size} \
@@ -248,18 +211,16 @@ for CHECKPOINT_PATH_FOR_PYTHON in "${CHECKPOINT_FULL_PATHS_TO_EVAL[@]}"; do
         trainer.experiment_name="${EXPERIMENT_NAME_FOR_PYTHON}" \
         trainer.n_gpus_per_node=${n_gpus_per_node} \
         trainer.nnodes="${NNODES}" \
-        +trainer.val_before_train=${VAL_BEFORE_TRAIN_FOR_PYTHON} \
-        trainer.test_freq=1 \
-        trainer.save_freq=5 \
-        trainer.track_advantages=False \
-        trainer.track_advantages_freq=5 \
         trainer.total_epochs=${num_epochs} \
         trainer.default_local_dir="${DEFAULT_LOCAL_DIR_FOR_PYTHON}" \
         trainer.resume_mode="disable" \
-        trainer.resume_from_path=${RESUME_FROM_PATH_FOR_PYTHON}  \
-        +trainer.val_only=${VAL_ONLY_FOR_PYTHON} \
+        trainer.resume_from_path=False  \
+        +trainer.advantage_tracking_only=True \
+        trainer.track_advantages=True \
         +trainer.evaluation_step=${STEP_NUM_FOR_LOGGING} \
-        +trainer.current_val_files_config="[/fast/pmayilvahanan/datasets/openai_math/test.parquet]"
+        +trainer.val_only=False \
+        +trainer.val_before_train=False
+
 done # End of loop for CHECKPOINT_PATH_FOR_PYTHON
 
-echo "All specified evaluations complete."
+echo "All specified advantage tracking tasks complete." 
