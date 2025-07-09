@@ -14,6 +14,7 @@
 """
 Generate responses given a dataset of prompts
 """
+import psutil
 import ray
 import numpy as np
 import hydra
@@ -42,10 +43,22 @@ def main(config):
 
 
 def run_generation(config) -> None:
-
+    """
+        limits the memory ray is able to use.
+    """
     if not ray.is_initialized():
-        # this is for local ray cluster
-        ray.init(runtime_env={'env_vars': {'TOKENIZERS_PARALLELISM': 'true', 'NCCL_DEBUG': 'WARN'}})
+        available_mem = int(psutil.virtual_memory().available * 0.7)
+        object_store_mem = int(available_mem * 0.25)
+
+        ray.init(
+            runtime_env={'env_vars': {
+                'TOKENIZERS_PARALLELISM': 'true',
+                'NCCL_DEBUG': 'WARN'
+            }},
+            memory=available_mem,
+            object_store_memory=object_store_mem,
+            _temp_dir="/tmp/ray"  # optionally override if /tmp is shared
+        )
 
     ray.get(main_task.remote(config))
 
@@ -65,6 +78,8 @@ def main_task(config):
 
     # read dataset. Note that the dataset should directly contain chat template format (e.g., a list of dictionary)
     dataset = pd.read_parquet(config.data.path)
+    dataset = dataset.head(config.data.get('n_prompts', len(dataset)))
+    
     chat_lst = dataset[config.data.prompt_key].tolist()
 
     chat_lst = [chat.tolist() for chat in chat_lst]
@@ -73,11 +88,13 @@ def main_task(config):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    print('pre ray workergroup init')
     ray_cls_with_init = RayClassWithInitArgs(cls=ray.remote(ActorRolloutRefWorker), config=config, role='rollout')
     resource_pool = RayResourcePool(process_on_nodes=[config.trainer.n_gpus_per_node] * config.trainer.nnodes)
     wg = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=ray_cls_with_init)
     wg.init_model()
 
+    print('post ray workergroup init')
     total_samples = len(dataset)
     # real_batch_size = data.batch['input_ids'].shape[0]
     config_batch_size = config.data.batch_size
