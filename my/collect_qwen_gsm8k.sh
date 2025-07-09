@@ -1,4 +1,4 @@
-python -m verl.trainer.main_generation \
+cd ~/ && python -m verl.trainer.main_generation \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=1 \
     data.path=/home/rfechner/data/gsm8k/test.parquet \
