@@ -18,6 +18,7 @@ import ray
 import numpy as np
 import hydra
 import os
+import logging
 
 os.environ['NCCL_DEBUG'] = 'WARN'
 os.environ['TOKENIZERS_PARALLELISM'] = 'true'
@@ -29,12 +30,25 @@ import pandas as pd
 
 from transformers import AutoTokenizer
 
+from typing import List, Callable
+from omegaconf import OmegaConf
 from verl import DataProto
 from verl.utils.fs import copy_to_local
 from verl.workers.fsdp_workers import ActorRolloutRefWorker
 from verl.utils.hdfs_io import makedirs
 from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
+from verl.utils.reward_score.math import compute_score as math_compute_score
 
+
+logger = logging.getLogger(__file__)
+logger.setLevel(logging.WARNING)
+
+
+def select_reward_fn(data_source):
+    if data_source == 'DigitalLearningGmbH/MATH-lighteval' or data_source == 'lighteval/MATH':
+        return math_compute_score
+    else:
+        raise NotImplementedError
 
 @hydra.main(config_path='config', config_name='generation', version_base=None)
 def main(config):
@@ -49,6 +63,22 @@ def run_generation(config) -> None:
 
     ray.get(main_task.remote(config))
 
+def add_score_column_to_dataset(output_list : List[List[str]], dataset: pd.DataFrame, reward_fn : Callable, config : OmegaConf) -> pd.DataFrame:
+    try:   
+        ground_truths = dataset['reward_model'].apply(lambda d: d['ground_truth'])
+        ground_truths = ground_truths.apply(lambda entry: [entry] * config.data.n_samples) # broadcast ground truth to match n_samples
+
+        # take responses and ground truths and map them to rewards
+        rewards = [np.array(list(map(reward_fn, outs, gts))) for outs, gts in zip(output_list, ground_truths)]
+        dataset['rewards'] = rewards
+    except Exception as e:
+        logger.warning('Encountered exception during reward evaluation. Continuing...')
+
+def dump_parquet(filename : str, dataset : pd.DataFrame):
+    output_dir = os.path.dirname(filename)
+    makedirs(output_dir, exist_ok=True)
+    dataset.to_parquet(filename)
+    print(f'Output saved to {filename}')
 
 @ray.remote(num_cpus=1)
 def main_task(config):
@@ -59,16 +89,28 @@ def main_task(config):
     local_path = copy_to_local(config.model.path)
     from verl.utils import hf_tokenizer
     tokenizer = hf_tokenizer(local_path)
+    
+    compute_scores = config.data.get('compute_scores', False) # whether to compute the reward scores of the rollouts
+    dump_parts = config.data.get('dump_parts', False) # whether to dump the intermediate batches instead of the full list
 
+    
     if config.rollout.temperature == 0.:
         assert config.data.n_samples == 1, 'When temperature=0, n_samples must be 1.'
 
     # read dataset. Note that the dataset should directly contain chat template format (e.g., a list of dictionary)
+    # only take first n samples.
     dataset = pd.read_parquet(config.data.path)
-    chat_lst = dataset[config.data.prompt_key].tolist()
+    dataset = dataset.head(config.data.take_first_n)  \
+        if config.data.get('take_first_n', -1) > 0 else dataset
+    
+    if compute_scores:
+        data_sources = dataset['data_source']
+        if len(set(data_sources)) > 1:
+            raise RuntimeError("Mixed data source. Currently not supported.")
+        reward_fn = select_reward_fn(data_source=data_sources.iloc[0])
 
-    chat_lst = [chat.tolist() for chat in chat_lst]
-
+    prompts = dataset[config.data.prompt_key].apply(lambda arr : arr[0]['content']).tolist()
+    
     tokenizer.padding_side = 'left'
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -83,19 +125,23 @@ def main_task(config):
     config_batch_size = config.data.batch_size
     dispatch_dp_size = wg.world_size
     num_batch = -(-total_samples // config_batch_size)
-    output_lst = [[] for _ in range(config.data.n_samples)]
+    output_accu = [[] for _ in range(config.data.n_samples)]
+
 
     for batch_idx in range(num_batch):
         print(f'[{batch_idx+1}/{num_batch}] Start to process.')
-        batch_chat_lst = chat_lst[batch_idx * config_batch_size:(batch_idx + 1) * config_batch_size]
-        inputs = tokenizer.apply_chat_template(batch_chat_lst,
-                                               add_generation_prompt=True,
-                                               padding=True,
-                                               truncation=True,
-                                               max_length=config.rollout.prompt_length,
-                                               return_tensors='pt',
-                                               return_dict=True,
-                                               tokenize=True)
+        batch_start_idx, batch_end_idx = batch_idx * config_batch_size, (batch_idx + 1) * config_batch_size
+        batch = prompts[batch_start_idx: batch_end_idx]
+
+        inputs = tokenizer(
+            batch,
+            padding=True,
+            truncation=True,
+            max_length=config.rollout.prompt_length,
+            return_tensors='pt',
+            return_attention_mask=True,
+        )
+
         input_ids = inputs['input_ids']
         attention_mask = inputs['attention_mask']
         position_ids = compute_position_id_with_mask(attention_mask)
@@ -118,37 +164,54 @@ def main_task(config):
         batch_size = data.batch['input_ids'].shape[0]
         assert batch_size % dispatch_dp_size == 0, f'batch_size {batch_size} is not divisible by dispatch_dp_size {dispatch_dp_size}'
 
-        print(f'[{batch_idx+1}/{num_batch}] Start to generate.')
-        # START TO GENERATE FOR n_samples TIMES
-        for i in range(config.data.n_samples):
-            output = wg.generate_sequences(data)
-            # remove dummy data
-            output = output[:real_batch_size]
-            output_text = tokenizer.batch_decode(output.batch['input_ids'][:, -config.rollout.response_length:],
-                                                 skip_special_tokens=False)
+        # Repeat the batch for n_samples, interleaved, as in RayPPOTrainer
+        n_samples = config.data.n_samples
+        data_repeated = data.repeat(repeat_times=n_samples, interleave=True)
+        output = wg.generate_sequences(data_repeated)  # shape [batch_size * n_samples, ...]
 
-            # remove the padding
-            pad_token = tokenizer.pad_token
-            output_text_unpad = []
-            for text in output_text:
-                output_text_unpad.append(text.replace(pad_token, ''))
+        # Remove dummy data (only keep batch_size * n_samples)
+        total_real = real_batch_size * n_samples
+        output = output[:total_real]
 
-            output_lst[i].extend(output_text_unpad)
+        # Reshape output: group by original prompt, each with n_samples
+        # output.batch['input_ids'] shape: [total_real, seq_len]
+        output_ids = output.batch['input_ids'][:, -config.rollout.response_length:]
+        output_text = tokenizer.batch_decode(output_ids, skip_special_tokens=False)
+        pad_token = tokenizer.pad_token
+        output_text_unpad = [text.replace(pad_token, '') for text in output_text]
 
-    # convert output_lst from (n_samples, n_data) to (n_data, n_sampels)
-    output_lst = np.array(output_lst, dtype=object)
-    output_lst = np.transpose(output_lst, axes=(1, 0)).tolist()
+        # Group outputs: [batch_size, n_samples]
+        grouped_outputs = [
+            output_text_unpad[i * n_samples:(i + 1) * n_samples]
+            for i in range(real_batch_size)
+        ]
 
-    # add to the data frame
-    dataset[f'responses'] = output_lst
+        if dump_parts:
+            sub_df = dataset.iloc[batch_start_idx:batch_end_idx]
+            sub_df = sub_df.copy()
+            sub_df['responses'] = grouped_outputs
 
-    # write to a new parquet
-    output_dir = os.path.dirname(config.data.output_path)
-    makedirs(output_dir, exist_ok=True)
-    dataset.to_parquet(config.data.output_path)
+            if compute_scores:
+                add_score_column_to_dataset(output_list=grouped_outputs, dataset=sub_df, reward_fn=reward_fn, config=config)
 
-    return output_text
+            part_path = config.data.output_path + f'-part{batch_idx}'
+            dump_parquet(filename=part_path, dataset=sub_df)
+        else:
+            # extend along the second (n_data) dimension
+            for i, l in enumerate(output_accu):
+                l.extend([group[i] for group in grouped_outputs])
 
+    if not dump_parts: # dump whole list at the end
+        # convert output_accu from (n_batch, n_samples, n_data) to (n_data, n_sampels)
+        output_accu = np.array(output_accu, dtype=object)
+        output_accu = np.transpose(output_accu, axes=(1, 0)).tolist()
+        # add to the data frame
+        dataset[f'responses'] = output_accu
+
+        if compute_scores:
+            add_score_column_to_dataset(output_list=output_accu, dataset=dataset, reward_fn=reward_fn, config=config)
+
+        dump_parquet(filename=config.data.output_path, dataset=dataset)
 
 if __name__ == '__main__':
     main()

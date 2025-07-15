@@ -52,7 +52,6 @@ def get_custom_reward_fn(config):
 def main(config):
     run_ppo(config)
 
-
 def run_ppo(config) -> None:
 
     if not ray.is_initialized():

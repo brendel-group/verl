@@ -163,7 +163,7 @@ def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, 
     current_kl = torch.mean(current_kl, dim=0).item()
 
     # according to https://github.com/huggingface/trl/blob/951ca1841f29114b969b57b26c7d3e80a39f75a0/trl/trainer/ppo_trainer.py#L837
-    kl_ctrl.update(current_kl=current_kl, n_steps=batch_size)
+    kl_ctrl.update(current_kl=current_kl, n_steps=batch_size) # update statistics like \beta of the adaptive KL controller
     data.batch['token_level_rewards'] = token_level_rewards
 
     metrics = {'critic/kl': current_kl, 'critic/kl_coeff': beta}
@@ -513,18 +513,20 @@ class RayPPOTrainer(object):
             return self.train_dataloader, self.val_dataloader
 
     def _maybe_log_val_generations(self, inputs, outputs, scores):
-        """Log a table of validation samples to the configured logger (wandb or swanlab)"""
+        """Log a table of validation samples to the configured logger (csv, wandb or swanlab)"""
 
         generations_to_log = self.config.trainer.val_generations_to_log_to_wandb
 
         if generations_to_log == 0:
             return
+        if generations_to_log == -1:
+            generations_to_log = len(inputs)
 
         import numpy as np
 
         # Create tuples of (input, output, score) and sort by input text
         samples = list(zip(inputs, outputs, scores))
-        samples.sort(key=lambda x: x[0])  # Sort by input text
+        samples.sort(key=lambda x: x[0])  # Sort by input text TODO: why?
 
         # Use fixed random seed for deterministic shuffling
         rng = np.random.RandomState(42)
@@ -534,7 +536,8 @@ class RayPPOTrainer(object):
         samples = samples[:generations_to_log]
 
         # Log to each configured logger
-        self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
+        backends = self.config.trainer.get('val_logger_backends', self.config.trainer.logger)
+        self.validation_generations_logger.log(backends, samples, self.global_steps)
 
     def _validate(self):
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)

@@ -1,0 +1,207 @@
+# used for directly running the main_task circumventing the hydra.main() wrapper
+data:
+  tokenizer: null
+  train_files: /u/rfechner/data/math/train.parquet
+  val_files: /u/rfechner/data/math/test.parquet
+  prompt_key: prompt
+  reward_fn_key: data_source
+  max_prompt_length: 1024
+  max_response_length: 3072
+  gen_batch_size: 768
+  train_batch_size: 256
+  val_batch_size: 530
+  return_raw_input_ids: false
+  return_raw_chat: false
+  shuffle: true
+  filter_overlong_prompts: true
+  truncation: left
+  image_key: images
+actor_rollout_ref:
+  hybrid_engine: true
+  model:
+    path: Qwen/Qwen2.5-0.5B
+    external_lib: null
+    override_config:
+      attention_dropout: 0.0
+      embd_pdrop: 0.0
+      resid_pdrop: 0.0
+    enable_gradient_checkpointing: true
+    use_remove_padding: true
+  actor:
+    strategy: fsdp
+    ppo_mini_batch_size: 128
+    ppo_micro_batch_size: null
+    ppo_micro_batch_size_per_gpu: null
+    use_dynamic_bsz: true
+    ppo_max_token_len_per_gpu: 4096
+    grad_clip: 1.0
+    clip_ratio: 0.2
+    clip_ratio_low: 0.2
+    clip_ratio_high: 0.28
+    clipping_mode: standard
+    use_token_level_loss: true
+    entropy_coeff: 0
+    use_kl_loss: false
+    use_torch_compile: true
+    kl_loss_coef: 0.0
+    kl_loss_type: low_var_kl
+    ppo_epochs: 1
+    shuffle: false
+    ulysses_sequence_parallel_size: 1
+    optim:
+      lr: 1.0e-06
+      lr_warmup_steps: 10
+      lr_warmup_steps_ratio: 0.0
+      min_lr_ratio: null
+      warmup_style: constant
+      total_training_steps: -1
+      weight_decay: 0.1
+    fsdp_config:
+      wrap_policy:
+        min_num_params: 0
+      param_offload: false
+      optimizer_offload: false
+      fsdp_size: -1
+  ref:
+    fsdp_config:
+      param_offload: false
+      wrap_policy:
+        min_num_params: 0
+    log_prob_micro_batch_size: null
+    log_prob_micro_batch_size_per_gpu: null
+    log_prob_use_dynamic_bsz: true
+    log_prob_max_token_len_per_gpu: 4096
+    ulysses_sequence_parallel_size: 1
+  rollout:
+    name: vllm
+    temperature: 0.6
+    top_k: -1
+    top_p: 1
+    use_fire_sampling: false
+    prompt_length: 1024
+    response_length: 3072
+    dtype: bfloat16
+    gpu_memory_utilization: 0.75
+    ignore_eos: false
+    enforce_eager: true
+    free_cache_engine: true
+    load_format: dummy_dtensor
+    tensor_model_parallel_size: 1
+    max_num_batched_tokens: 4096
+    max_model_len: null
+    max_num_seqs: 1024
+    log_prob_micro_batch_size: null
+    log_prob_micro_batch_size_per_gpu: null
+    log_prob_use_dynamic_bsz: true
+    log_prob_max_token_len_per_gpu: 4096
+    disable_log_stats: true
+    enable_chunked_prefill: true
+    do_sample: true
+    n: 8
+    n_advantage_tracking: 8
+    val_kwargs:
+      top_k: -1
+      top_p: 1.0
+      temperature: 0.6
+      n: 8
+      do_sample: true
+critic: # not used in GRPO
+  strategy: fsdp
+  optim:
+    lr: 1.0e-05
+    lr_warmup_steps_ratio: 0.0
+    min_lr_ratio: null
+    warmup_style: constant
+    total_training_steps: -1
+    weight_decay: 0.01
+  model:
+    path: ~/models/deepseek-llm-7b-chat
+    tokenizer_path: Qwen/Qwen2.5-0.5B
+    override_config: {}
+    external_lib: null
+    enable_gradient_checkpointing: true
+    use_remove_padding: false
+    fsdp_config:
+      param_offload: false
+      optimizer_offload: false
+      wrap_policy:
+        min_num_params: 0
+      fsdp_size: -1
+  ppo_mini_batch_size: 128
+  ppo_micro_batch_size: null
+  ppo_micro_batch_size_per_gpu: null
+  forward_micro_batch_size: null
+  forward_micro_batch_size_per_gpu: null
+  use_dynamic_bsz: true
+  ppo_max_token_len_per_gpu: 32768
+  forward_max_token_len_per_gpu: 32768
+  ulysses_sequence_parallel_size: 1
+  ppo_epochs: 1
+  shuffle: false
+  grad_clip: 1.0
+  cliprange_value: 0.5
+reward_model:
+  enable: false
+  strategy: fsdp
+  model:
+    input_tokenizer: Qwen/Qwen2.5-0.5B
+    path: ~/models/FsfairX-LLaMA3-RM-v0.1
+    external_lib: null
+    use_remove_padding: false
+    fsdp_config:
+      wrap_policy:
+        min_num_params: 0
+      param_offload: false
+      fsdp_size: -1
+  micro_batch_size: null
+  micro_batch_size_per_gpu: null
+  max_length: null
+  ulysses_sequence_parallel_size: 1
+  use_dynamic_bsz: true
+  forward_max_token_len_per_gpu: 32768
+  reward_manager: naive
+custom_reward_function:
+  path: null
+  name: compute_score
+  overlong_buffer:
+    enable: false
+    len: 0
+    penalty_factor: 1.0
+    log: false
+algorithm:
+  gamma: 1.0
+  lam: 1.0
+  adv_estimator: grpo
+  kl_penalty: kl
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.0
+  filter_groups:
+    enable: true
+    metric: seq_final_reward
+    fill_to_train_bsz: true
+    drop_last_mini_batch: true
+trainer:
+  balance_batch: true
+  total_epochs: 10
+  total_training_steps: null
+  project_name: self_distillation_emnlp
+  experiment_name: Qwen/Qwen2.5-0.5B_math_n_8_bsz_256_epochs_10_kl_coef_0.0
+  logger:
+  - console
+  val_generations_to_log_to_wandb: 0
+  nnodes: 1
+  n_gpus_per_node: 1
+  save_freq: 25
+  resume_mode: auto
+  resume_from_path: false
+  test_freq: 5
+  critic_warmup: 0
+  default_hdfs_dir: null
+  remove_previous_ckpt_in_save: false
+  del_local_ckpt_after_load: false
+  default_local_dir: /u/rfechner/post_training/verl_checkpoints/self_distillation_emnlp/Qwen/Qwen2.5-0.5B_math_n_8_bsz_256_epochs_10_kl_coef_0.0
+  track_advantages: true
+  track_advantages_freq: 5
+  use_ref_for_generation: false
+  val_before_train: false

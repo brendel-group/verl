@@ -22,7 +22,7 @@ from typing import List, Union, Dict, Any
 
 
 class Tracking(object):
-    supported_backend = ["wandb", "mlflow", "swanlab", "vemlp_wandb", "tensorboard", "console"]
+    supported_backend = ["wandb", "mlflow", "swanlab", "vemlp_wandb", "tensorboard", "console", "csv"]
 
     def __init__(self, project_name, experiment_name, default_backend: Union[str, List[str]] = 'console', config=None):
         if isinstance(default_backend, str):
@@ -88,6 +88,12 @@ class Tracking(object):
             from verl.utils.logger.aggregate_logger import LocalLogger
             self.console_logger = LocalLogger(print_to_console=True)
             self.logger['console'] = self.console_logger
+
+        if 'csv' in default_backend:
+            warnings.warn(
+                "CSV logger is currently only used to log validation rollouts in the ValidationGenerationsLogger.\nPlease use `wandb` or `swanlab` for regular logging.",
+                RuntimeWarning
+            )
 
     def log(self, data, step, backend=None):
         for default_backend, logger_instance in self.logger.items():
@@ -172,6 +178,23 @@ class ValidationGenerationsLogger:
             self.log_generations_to_wandb(samples, step)
         if 'swanlab' in loggers:
             self.log_generations_to_swanlab(samples, step)
+        if 'csv' in loggers:
+            self.log_generations_to_csv(samples, step)
+
+    def log_generations_to_csv(self, samples, step, file_path="validation_generations.csv"):
+        """Append samples to a CSV file efficiently. Columns: step, input, output, score (one row per sample)."""
+        import csv
+        import os
+        columns = ["step", "input", "output", "score"]
+        write_header = not os.path.exists(file_path) or os.path.getsize(file_path) == 0
+        with open(file_path, "a", encoding="utf-8", newline='') as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(columns)
+            for sample in samples:
+                row = [step] + list(sample)
+                writer.writerow(row)
+            
 
     def log_generations_to_wandb(self, samples, step):
         """Log samples to wandb as a table"""

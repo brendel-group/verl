@@ -32,6 +32,7 @@ module purge
 module load anaconda/3/2021.11  # Or a newer/different Anaconda version suitable for verl
 module load cuda/12.6 
 module list
+
 # Initialize Conda for shell interaction and activate your specific environment
 # Replace 'your_verl_conda_env_name' with the actual name of your Conda environment
 eval "$(conda shell.bash hook)"
@@ -49,7 +50,7 @@ echo "========================================================"
 # Define the path to your shell script
 # If you want to run a different script, change this path.
 # This path is relative to the directory where you run `sbatch run_verl_job.sbatch`.
-TARGET_SCRIPT="recipe/emnlp/train_1.5_dsr_sub.sh"
+TARGET_SCRIPT="recipe/emnlp/train_rfechner_test.sh"
 
 echo "Executing script: ${TARGET_SCRIPT}"
 echo "Start time: $(date)"
