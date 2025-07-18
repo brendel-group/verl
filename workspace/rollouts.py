@@ -61,9 +61,9 @@ if __name__ == "__main__":
     """
     parser = argparse.ArgumentParser(description="Proxy for multiple SLURM job submissions based on dataset size.")
     parser.add_argument("--file", type=str, required=True, help="Path to the dataset parquet file.")
-    parser.add_argument("--chunksize", type=int, required=True, help="Chunk size for splitting the dataset.")
+    parser.add_argument("--chunksize", type=int, default=1024, help="Chunk size for splitting the dataset.")
     parser.add_argument("--rollouts", type=int, default=1024, help="Number of rollouts to run for each question.")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5_7B", help="Model Identifier. Used to instantiate the model. NOTE: In case you specify a checkpoint, Model families have to match.")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-7B", help="Model Identifier. Used to instantiate the model. NOTE: In case you specify a checkpoint, Model families have to match.")
     parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint to ../actor directory of a actor checkpoint to generate the rollouts from.")
 
     args = parser.parse_args()
