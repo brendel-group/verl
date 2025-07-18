@@ -80,9 +80,9 @@ project_name='rollouts'  # Name of the project
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/u/rfechner"}  # Base directory for data and checkpoints
 num_rollouts=1024  # Number of rollouts per prompt
 num_questions=1024  # Number of questions to take from the dataset
-exp_name="${MODEL_PATH}_${DATASET_NAME}/nquestions_${num_questions}_nrollouts_${num_rollouts}_chunk${SLURM_IDX}"  # Experiment name string
 timestamp=$(date +"%Y%m%d_%H%M%S")  # Timestamp for unique checkpointing
-CKPTS_DIR="${RAY_DATA_HOME}/out/${project_name}/${exp_name}_${timestamp}"  # Checkpoint directory
+exp_name="${MODEL_PATH}_${DATASET_NAME}_${timestamp}/nquestions_${num_questions}_nrollouts_${num_rollouts}_chunk${SLURM_IDX}"  # Experiment name string
+CKPTS_DIR="${RAY_DATA_HOME}/out/${project_name}/${exp_name}"  # Checkpoint directory
 FILE="${RAY_DATA_HOME}/data/${DATASET_PATH}"
 
 # =====================
@@ -103,7 +103,6 @@ python3 -m verl.trainer.main_generation \
     data.path="${FILE}" \
     data.output_path="${CKPTS_DIR}/results.parquet" \
     data.n_samples=${num_rollouts} \
-    +data.take_first_n=${num_questions} \
     +data.dump_parts=True \
     data.batch_size=16 \
     model.path=${MODEL_PATH} \

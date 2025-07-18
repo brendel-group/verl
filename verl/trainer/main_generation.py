@@ -94,8 +94,9 @@ def main_task(config):
     dump_parts = config.data.get('dump_parts', False) # whether to dump the intermediate batches instead of the full list
 
     # if called as job array -> have to attend to different parts of the input dataset
-    chunksize = config.data.get('CHUNK_SIZE', None)
-    sbatch_job_idx = config.data.get('SLURM_IDX', None)
+    chunksize = config.data.get('CHUNK_SIZE')
+    sbatch_job_idx = config.data.get('SLURM_IDX')
+    take_first_n = config.data.get('take_first_n')
     
     if config.rollout.temperature == 0.:
         assert config.data.n_samples == 1, 'When temperature=0, n_samples must be 1.'
@@ -103,11 +104,13 @@ def main_task(config):
     # read dataset. Note that the dataset should directly contain chat template format (e.g., a list of dictionary)
     # only take first n samples.
     dataset = pd.read_parquet(config.data.path)
-    dataset = dataset.head(config.data.take_first_n)  \
-        if config.data.get('take_first_n', -1) > 0 else dataset
-    
-    if sbatch_job_idx is not None: # attend to the assigned part of the input dataset. 
-        dataset = dataset.iloc[sbatch_job_idx: sbatch_job_idx * chunksize - 1]
+    if take_first_n:
+        dataset = dataset.head(take_first_n)
+
+    if config.data.get('chunksize'): # we're supposed to attend to a specific chunk within an sbatch job array
+        start_idx = sbatch_job_idx * chunksize
+        end_idx = (sbatch_job_idx + 1) * chunksize
+        dataset = dataset.iloc[start_idx:end_idx] # end_idx may overshoot but thats fine.
 
     if compute_scores:
         data_sources = dataset['data_source']

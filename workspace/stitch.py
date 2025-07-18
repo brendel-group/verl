@@ -11,33 +11,30 @@ logging.basicConfig(level=logging.INFO)
 def find_parquet_parts(directory):
     """Find all parquet-partX files and return list of (filepath, X) tuples."""
     parquet_files = []
-    pattern = re.compile(r"(.*\.parquet-part)(\d+)$")
-    
+    pattern = re.compile(r".*\.parquet-part\d+$")
+
     for root, _, files in os.walk(directory):
         for file in files:
-            match = pattern.match(file)
-            if match:
-                part_number = int(match.group(2))
+            if pattern.match(file):
                 full_path = os.path.join(root, file)
-                parquet_files.append((full_path, part_number))
-    
-    return sorted(parquet_files, key=lambda x: x[1])
+                parquet_files.append(full_path)
+    return parquet_files
 
 def concatenate_parquet_parts(input_dir, output_file="combined.parquet"):
-    parts = find_parquet_parts(input_dir)
-    if not parts:
+    files = find_parquet_parts(input_dir)
+    if not files:
         logger.warning("No matching parquet-partX files found.")
         return
 
     dataframes = []
-    for filepath, part_number in parts:
+    for filepath in files:
         logger.info(f"Reading: {filepath}")
         df = pd.read_parquet(filepath)
         dataframes.append(df)
 
-    combined_df = pd.concat(dataframes, ignore_index=True)
+    combined_df = pd.concat(dataframes)
     combined_df.to_parquet(output_file)
-    logger.info(f"Concatenated {len(parts)} files into {output_file}")
+    logger.info(f"Concatenated {len(files)} files into {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Concatenate parquet-partX files into a single parquet file.")
