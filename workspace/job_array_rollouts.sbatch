@@ -1,8 +1,8 @@
 #!/bin/bash -l
 
 #SBATCH --job-name=chunk_${SLURM_IDX}
-#SBATCH --output=/u/rfechner/jobs/rollouts_${SLURM_IDX}_%j.out # Standard output file (%j expands to job ID)
-#SBATCH --error=/u/rfechner/jobs/rollouts_${SLURM_IDX}_%j.err  # Standard error file (%j expands to job ID)
+#SBATCH --output=/u/rfechner/jobs/rollouts_%j.out # Standard output file (%j expands to job ID)
+#SBATCH --error=/u/rfechner/jobs/rollouts_%j.err  # Standard error file (%j expands to job ID)
 #SBATCH --nodes=1                        # Request 1 node (as per NNODES=1 in your script)
 #SBATCH --ntasks-per-node=1              # Run the shell script as a single task on this node
 #SBATCH --cpus-per-task=72               # Allocate all CPUs on the node (Raven GPU nodes often have 72 cores, adjust if different)
@@ -97,16 +97,16 @@ val_temperature=0.6  # Temperature for validation generation
 python3 -m verl.trainer.main_generation \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=4 \
-    +data.compute_scores=True \
-    +data.CHUNK_SIZE=${CHUNK_SIZE} \
-    +data.SLURM_IDX=${SLURM_IDX} \
     data.path="${FILE}" \
     data.output_path="${CKPTS_DIR}/results.parquet" \
     data.n_samples=${num_rollouts} \
-    +data.dump_parts=True \
     data.batch_size=16 \
+    +data.compute_scores=True \
+    +data.CHUNK_SIZE=${CHUNK_SIZE} \
+    +data.SLURM_IDX=${SLURM_IDX} \
+    +data.dump_parts=True \
     model.path=${MODEL_PATH} \
-    model.checkpoint=${CHECKPOINT} \
+    +model.checkpoint=${CHECKPOINT} \
     rollout.response_length=${max_response_length} \
     rollout.temperature=${val_temperature} \
     rollout.top_k=${val_top_k} \
