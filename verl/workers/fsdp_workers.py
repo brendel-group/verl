@@ -389,7 +389,17 @@ class ActorRolloutRefWorker(Worker):
                                               actor_optimizer=self.actor_optimizer)
 
         if self._is_rollout:
-            self.rollout, self.rollout_sharding_manager = self._build_rollout()
+            # check whether we load an actor checkpoint for the rollout
+            if self.config.model.get('checkpoint'):
+                self.checkpoint_manager = FSDPCheckpointManager(
+                    model=self.actor_module_fsdp,
+                    optimizer=None,
+                    lr_scheduler=None,
+                    processing_class=self.processor if self.processor is not None else self.tokenizer)
+                self.checkpoint_manager.load_checkpoint(path = self.config.model.checkpoint)
+                del self.checkpoint_manager
+                
+            self.rollout, self.rollout_sharding_manager = self._build_rollout()            
 
         if self._is_ref:
             self.ref_module_fsdp = self._build_model_optimizer(model_path=self.config.model.path,

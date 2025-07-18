@@ -11,15 +11,15 @@ set -euxo pipefail
 # =====================
 # 1. Project, Experiment, and Paths
 # =====================
-project_name='rollouts_llm_rl_exploration'  # Name of the project
+project_name='rollouts'  # Name of the project
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/u/rfechner"}  # Base directory for data and checkpoints
 MODEL_PATH=Qwen/Qwen2.5-7B  # Model name or path
 dataset_name='math'  # Name of the dataset
 num_rollouts=8  # Number of rollouts per prompt
 num_questions=16  # Number of questions to take from the dataset
-exp_name="${MODEL_PATH}_${dataset_name}_n_${num_rollouts}"  # Experiment name string
+exp_name="${MODEL_PATH}_${dataset_name}_nquestions_${num_questions}_nrollouts_${num_rollouts}"  # Experiment name string
 timestamp=$(date +"%Y%m%d_%H%M%S")  # Timestamp for unique checkpointing
-CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/post_training/verl_checkpoints/${project_name}/${exp_name}_${timestamp}"}  # Checkpoint directory
+CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/out/${project_name}/${exp_name}_${timestamp}"}  # Checkpoint directory
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/${dataset_name}/train.parquet"}  # Training data file
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/${dataset_name}/test.parquet"}  # Test/validation data file
 

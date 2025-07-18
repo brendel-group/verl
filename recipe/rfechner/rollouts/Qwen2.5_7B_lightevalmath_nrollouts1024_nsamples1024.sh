@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euxo pipefail
-
+echo "Qwen 7B rollout collection. Setting up..."
 # ------------------------------------------------------------------------------
 # Script: generate_rfechner_test.sh
 # Purpose: Run LLM rollout generation for RL exploration using verl/trainer.
@@ -11,15 +11,15 @@ set -euxo pipefail
 # =====================
 # 1. Project, Experiment, and Paths
 # =====================
-project_name='rollouts_llm_rl_exploration'  # Name of the project
+project_name='rollouts'  # Name of the project
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/u/rfechner"}  # Base directory for data and checkpoints
-MODEL_PATH=Qwen/Qwen2.5-1.5B  # Model name or path
+MODEL_PATH=Qwen/Qwen2.5-7B  # Model name or path
 dataset_name='math'  # Name of the dataset
-num_rollouts=300  # Number of rollouts per prompt
-num_questions=500  # Number of questions to take from the dataset
-exp_name="${MODEL_PATH}_${dataset_name}_n_${num_rollouts}"  # Experiment name string
+num_rollouts=1024  # Number of rollouts per prompt
+num_questions=1024  # Number of questions to take from the dataset
+exp_name="${MODEL_PATH}_${dataset_name}_nquestions_${num_questions}_nrollouts_${num_rollouts}"  # Experiment name string
 timestamp=$(date +"%Y%m%d_%H%M%S")  # Timestamp for unique checkpointing
-CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/post_training/verl_checkpoints/${project_name}/${exp_name}_${timestamp}"}  # Checkpoint directory
+CKPTS_DIR=${CKPTS_DIR:-"${RAY_DATA_HOME}/out/${project_name}/${exp_name}_${timestamp}"}  # Checkpoint directory
 TRAIN_FILE=${TRAIN_FILE:-"${RAY_DATA_HOME}/data/${dataset_name}/train.parquet"}  # Training data file
 TEST_FILE=${TEST_FILE:-"${RAY_DATA_HOME}/data/${dataset_name}/test.parquet"}  # Test/validation data file
 
@@ -48,12 +48,13 @@ python3 -m verl.trainer.main_generation \
     data.output_path="${CKPTS_DIR}/results.parquet" \
     data.n_samples=${num_rollouts} \
     +data.take_first_n=${num_questions} \
-    data.batch_size=8 \
+    +data.dump_parts=True \
+    data.batch_size=16 \
     model.path="${MODEL_PATH}" \
     rollout.response_length=${max_response_length} \
     rollout.temperature=${val_temperature} \
     rollout.top_k=${val_top_k} \
     rollout.prompt_length=${max_prompt_length} \
     rollout.response_length=${max_response_length} \
-    rollout.tensor_model_parallel_size=1 \
+    rollout.tensor_model_parallel_size=2 \
     rollout.gpu_memory_utilization=0.8 \

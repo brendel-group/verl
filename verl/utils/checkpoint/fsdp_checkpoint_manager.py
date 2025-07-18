@@ -58,6 +58,7 @@ class FSDPCheckpointManager(BaseCheckpointManager):
 
         super().__init__(model, optimizer, lr_scheduler, processing_class)
 
+    
     def load_checkpoint(self, path=None, del_local_after_load=False, *args, **kwargs):
         if path is None:
             return

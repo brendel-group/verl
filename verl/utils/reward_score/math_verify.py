@@ -14,7 +14,21 @@
 
 from math_verify.metric import math_metric
 from math_verify.parser import LatexExtractionConfig, ExprExtractionConfig
+import logging
 
+logger = logging.getLogger(__file__)
+logger.warning('\t[DEV] Currently not printing out `math_verify` warnings during scoring to reduce load on I/O.')
+
+from contextlib import contextmanager
+
+@contextmanager
+def set_log_level(level):
+    old_level = logging.getLogger().level
+    logging.getLogger().setLevel(level)
+    try:
+        yield
+    finally:
+        logging.getLogger().setLevel(old_level)
 
 def compute_score(model_output: str, ground_truth: str) -> bool:
     verify_func = math_metric(
@@ -25,9 +39,11 @@ def compute_score(model_output: str, ground_truth: str) -> bool:
 
     # Wrap the ground truth in \boxed{} format for verification
     ground_truth_boxed = "\\boxed{" + ground_truth + "}"
-    try:
-        ret_score, _ = verify_func([ground_truth_boxed], [model_output])
-    except Exception as e:
-        print(e)
+    with set_log_level(logging.ERROR): # prevent logging.WARNING from flooding stdout.
+        try:
+            ret_score, _ = verify_func([ground_truth_boxed], [model_output])
+        except Exception as e:
+            print(e)
+            pass
 
     return ret_score

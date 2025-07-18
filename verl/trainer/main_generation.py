@@ -93,6 +93,9 @@ def main_task(config):
     compute_scores = config.data.get('compute_scores', False) # whether to compute the reward scores of the rollouts
     dump_parts = config.data.get('dump_parts', False) # whether to dump the intermediate batches instead of the full list
 
+    # if called as job array -> have to attend to different parts of the input dataset
+    chunksize = config.data.get('CHUNK_SIZE', None)
+    sbatch_job_idx = config.data.get('SLURM_IDX', None)
     
     if config.rollout.temperature == 0.:
         assert config.data.n_samples == 1, 'When temperature=0, n_samples must be 1.'
@@ -103,6 +106,9 @@ def main_task(config):
     dataset = dataset.head(config.data.take_first_n)  \
         if config.data.get('take_first_n', -1) > 0 else dataset
     
+    if sbatch_job_idx is not None: # attend to the assigned part of the input dataset. 
+        dataset = dataset.iloc[sbatch_job_idx: sbatch_job_idx * chunksize - 1]
+
     if compute_scores:
         data_sources = dataset['data_source']
         if len(set(data_sources)) > 1:
@@ -115,11 +121,14 @@ def main_task(config):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+
     ray_cls_with_init = RayClassWithInitArgs(cls=ray.remote(ActorRolloutRefWorker), config=config, role='rollout')
     resource_pool = RayResourcePool(process_on_nodes=[config.trainer.n_gpus_per_node] * config.trainer.nnodes)
     wg = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=ray_cls_with_init)
-    wg.init_model()
 
+    # this now loads the checkpoint for the rollout in the initialization
+    wg.init_model()
+    
     total_samples = len(dataset)
     # real_batch_size = data.batch['input_ids'].shape[0]
     config_batch_size = config.data.batch_size
