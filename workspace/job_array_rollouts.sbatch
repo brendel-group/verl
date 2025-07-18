@@ -1,6 +1,6 @@
 #!/bin/bash -l
 
-#SBATCH --job-name=chunk_${SLURM_IDX}
+#SBATCH --job-name=chunk
 #SBATCH --output=/u/rfechner/jobs/rollouts_%j.out # Standard output file (%j expands to job ID)
 #SBATCH --error=/u/rfechner/jobs/rollouts_%j.err  # Standard error file (%j expands to job ID)
 #SBATCH --nodes=1                        # Request 1 node (as per NNODES=1 in your script)
@@ -63,6 +63,11 @@ if [ -z "${CHUNK_SIZE}" ]; then
     exit 1
 fi
 
+if [ -z "${ROLLOUTS}" ]; then
+    echo "ERROR: ROLLOUTS is not set. Please export it before running this script."
+    exit 1
+fi
+
 if [ -z "${MODEL_PATH}" ]; then
     echo "ERROR: MODEL_PATH is not set. Please export it before running this script."
     exit 1
@@ -78,10 +83,9 @@ fi
 # =====================
 project_name='rollouts'  # Name of the project
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/u/rfechner"}  # Base directory for data and checkpoints
-num_rollouts=1024  # Number of rollouts per prompt
-num_questions=1024  # Number of questions to take from the dataset
+take_first_n=1024  # Number of questions to take from the dataset
 timestamp=$(date +"%Y%m%d_%H%M%S")  # Timestamp for unique checkpointing
-exp_name="${MODEL_PATH}_${DATASET_NAME}_${timestamp}/nquestions_${num_questions}_nrollouts_${num_rollouts}_chunk${SLURM_IDX}"  # Experiment name string
+exp_name="${MODEL_PATH}_${DATASET_NAME}_${timestamp}/nrollouts_${ROLLOUTS}_chunk${SLURM_IDX}"  # Experiment name string
 CKPTS_DIR="${RAY_DATA_HOME}/out/${project_name}/${exp_name}"  # Checkpoint directory
 FILE="${RAY_DATA_HOME}/data/${DATASET_PATH}"
 
@@ -99,7 +103,7 @@ python3 -m verl.trainer.main_generation \
     trainer.n_gpus_per_node=4 \
     data.path="${FILE}" \
     data.output_path="${CKPTS_DIR}/results.parquet" \
-    data.n_samples=${num_rollouts} \
+    data.n_samples=${ROLLOUTS} \
     data.batch_size=16 \
     +data.compute_scores=True \
     +data.CHUNK_SIZE=${CHUNK_SIZE} \

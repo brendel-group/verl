@@ -29,7 +29,7 @@ from verl.utils.model import compute_position_id_with_mask
 import pandas as pd
 
 from transformers import AutoTokenizer
-
+from functools import partial
 from typing import List, Callable
 from omegaconf import OmegaConf
 from verl import DataProto
@@ -37,18 +37,14 @@ from verl.utils.fs import copy_to_local
 from verl.workers.fsdp_workers import ActorRolloutRefWorker
 from verl.utils.hdfs_io import makedirs
 from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
-from verl.utils.reward_score.math import compute_score as math_compute_score
-
+from verl.utils.reward_score import _default_compute_score
 
 logger = logging.getLogger(__file__)
 logger.setLevel(logging.WARNING)
 
 
 def select_reward_fn(data_source):
-    if data_source == 'DigitalLearningGmbH/MATH-lighteval' or data_source == 'lighteval/MATH':
-        return math_compute_score
-    else:
-        raise NotImplementedError
+    return partial(_default_compute_score, data_source=data_source)
 
 @hydra.main(config_path='config', config_name='generation', version_base=None)
 def main(config):

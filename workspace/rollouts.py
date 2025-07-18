@@ -6,9 +6,8 @@ import argparse
 import pathlib
 
 MAX_N_CHUNKS = 10
-valid_datasets = {'math', 'gsm8k'}
 
-def main(path: str, chunksize: int, model : str, checkpoint: str):
+def main(path: str, chunksize: int, rollouts : int, model : str, checkpoint: str):
     # Convert paths to absolute and check validity
     abs_path = os.path.abspath(path)
     if not os.path.isfile(abs_path):
@@ -20,7 +19,6 @@ def main(path: str, chunksize: int, model : str, checkpoint: str):
     filename = pathlib.Path(abs_path).name
     joined_name = f"{dataset_name}/{filename}"
 
-    assert dataset_name in valid_datasets, f"Dataset {dataset_name} couldn't be found in valid datasets, perhaps invalid or not supported."
     abs_checkpoint = None
     if checkpoint:
         abs_checkpoint = os.path.abspath(checkpoint)
@@ -45,6 +43,7 @@ def main(path: str, chunksize: int, model : str, checkpoint: str):
             f"MODEL_PATH={model}",
             f"CHECKPOINT={abs_checkpoint if abs_checkpoint else ''}",
             f"CHUNK_SIZE={chunksize}",
+            f"ROLLOUTS={rollouts}",
             f"SLURM_IDX={slurm_idx}"
         ]
         _ = subprocess.Popen([
@@ -63,9 +62,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proxy for multiple SLURM job submissions based on dataset size.")
     parser.add_argument("--file", type=str, required=True, help="Path to the dataset parquet file.")
     parser.add_argument("--chunksize", type=int, required=True, help="Chunk size for splitting the dataset.")
+    parser.add_argument("--rollouts", type=int, default=1024, help="Number of rollouts to run for each question.")
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5_7B", help="Model Identifier. Used to instantiate the model. NOTE: In case you specify a checkpoint, Model families have to match.")
     parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint to ../actor directory of a actor checkpoint to generate the rollouts from.")
+
     args = parser.parse_args()
 
     os.chdir(os.getenv("HOME"))
-    main(path=args.file, chunksize=args.chunksize, model = args.model, checkpoint=args.checkpoint)
+    main(path=args.file, chunksize=args.chunksize, rollouts=args.rollouts, model = args.model, checkpoint=args.checkpoint)
