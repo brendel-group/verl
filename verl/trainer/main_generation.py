@@ -44,7 +44,7 @@ logger.setLevel(logging.WARNING)
 
 
 def select_reward_fn(data_source):
-    return partial(_default_compute_score, data_source=data_source)
+    return lambda solution_str, ground_truth: _default_compute_score(data_source, solution_str, ground_truth)
 
 @hydra.main(config_path='config', config_name='generation', version_base=None)
 def main(config):
@@ -68,7 +68,10 @@ def add_score_column_to_dataset(output_list : List[List[str]], dataset: pd.DataF
         rewards = [np.array(list(map(reward_fn, outs, gts))) for outs, gts in zip(output_list, ground_truths)]
         dataset['rewards'] = rewards
     except Exception as e:
-        logger.warning('Encountered exception during reward evaluation. Continuing...')
+        logger.error(f'Encountered exception during reward evaluation: {str(e)}. Continuing without rewards...')
+        print(f'Error adding rewards: {str(e)}')
+    
+    return dataset
 
 def dump_parquet(filename : str, dataset : pd.DataFrame):
     output_dir = os.path.dirname(filename)
@@ -103,7 +106,7 @@ def main_task(config):
     if take_first_n:
         dataset = dataset.head(take_first_n)
 
-    if config.data.get('chunksize'): # we're supposed to attend to a specific chunk within an sbatch job array
+    if chunksize: # we're supposed to attend to a specific chunk within an sbatch job array
         start_idx = sbatch_job_idx * chunksize
         end_idx = (sbatch_job_idx + 1) * chunksize
         dataset = dataset.iloc[start_idx:end_idx] # end_idx may overshoot but thats fine.

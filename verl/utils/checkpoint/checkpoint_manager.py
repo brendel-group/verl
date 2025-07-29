@@ -51,6 +51,7 @@ class BaseCheckpointManager:
         self.processing_class = processing_class
 
         assert isinstance(self.model, FSDP)
+
         self.rank = torch.distributed.get_rank()
         self.world_size = torch.distributed.get_world_size()
 

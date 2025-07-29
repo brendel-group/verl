@@ -21,7 +21,8 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     elif data_source in ['lighteval/MATH', 'DigitalLearningGmbH/MATH-lighteval', 'HuggingFaceH4/aime_2024', 'bethgelab/CuratedThoughts', 
                          'agentica-org/DeepScaleR-Preview-Dataset', 'SynthLabsAI/Big-Math-RL-Verified', 
                          'HuggingFaceH4/MATH-500', 'simplescaling/openaimath', 'agentica-org/DeepScaleR-Preview-Dataset', 'deepscaler', 
-                         'math-ai/olympiadbench', 'math-ai/aime25', 'math-ai/aime24', 'math-ai/gpqa', 'math-ai/minervamath', 'math-ai/amc23', 'LuyiCui/MATH']:
+                         'math-ai/olympiadbench', 'math-ai/aime25', 'math-ai/aime24', 'math-ai/gpqa', 'math-ai/minervamath', 
+                         'math-ai/amc23', 'LuyiCui/MATH', 'math-ai/math500']:
         # from . import math
         # res = math.compute_score(solution_str, ground_truth)
 
@@ -44,7 +45,7 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
         from . import geo3k
         res = geo3k.compute_score(solution_str, ground_truth)
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"Couldn't find `compute_score` function for data_source: {data_source}")
 
     if isinstance(res, dict):
         return res
