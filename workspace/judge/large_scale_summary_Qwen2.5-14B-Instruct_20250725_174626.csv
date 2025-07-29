@@ -1,0 +1,11 @@
+index,reward,question,majority_category,confidence,majority_count,total_parsed,total_responses,is_unanimous,category_distribution
+319,0.0,Solve for $a$: $$\sqrt{4+\sqrt{16+16a}}+ \sqrt{1+\sqrt{1+a}} = 6.$$ Let's think step by step and out...,Incomplete Solution,0.5,5,10,10,False,"{'Mislabeling': 3, 'Incomplete Solution': 5, 'Tool misuse': 1, 'Computational Error': 1}"
+333,0.0,The sum of a 15-term arithmetic series with first term 7  is $-210$.  What is the common difference?...,Computational Error,0.5,5,10,10,False,"{'Computational Error': 5, 'Logic Error': 2, 'Tool misuse': 1, 'Mislabeling': 2}"
+85,0.0009765625,"In the sequence 0, 1, 1, 3, 6, 9, 27, ..., the first term is 0.   Subsequent terms are produced by a...",Logic Error,1.0,10,10,10,True,{'Logic Error': 10}
+427,0.001953125,"The equation of a circle which has a center at $(-5,2)$ can be written as $Ax^2 + 2y^2 + Bx + Cy = 4...",Conceptual Misunderstanding,1.0,9,9,10,True,{'Conceptual Misunderstanding': 9}
+295,0.0029296875,A man nearing retirement wants to invest some money in a fund that compounds annually at a rate of 6...,Computational Error,1.0,10,10,10,True,{'Computational Error': 10}
+91,0.0029296875,Two positive numbers $p$ and $q$ have the property that their sum is equal to their product. If thei...,Computational Error,1.0,10,10,10,True,{'Computational Error': 10}
+635,0.005859375,"Suppose that $f$ is a quadratic polynomial and $g$ is a cubic polynomial, and both $f$ and $g$ have ...",Conceptual Misunderstanding,0.9,9,10,10,False,"{'Conceptual Misunderstanding': 9, 'Logic Error': 1}"
+414,0.0068359375,"Find all solutions to the equation $\sqrt{3x+6}=x+2$.  If there are multiple solutions, order them f...",Conceptual Misunderstanding,0.5555555555555556,5,9,10,False,"{'Conceptual Misunderstanding': 5, 'Logic Error': 2, 'Incomplete Solution': 2}"
+20,0.0107421875,Suppose the roots of the polynomial $x^2 - mx + n$ are positive prime integers (not necessarily dist...,Logic Error,0.625,5,8,10,False,"{'Logic Error': 5, 'Incomplete Solution': 2, 'Conceptual Misunderstanding': 1}"
+620,0.01171875,"If $x$, $y$, and $z$ are positive integers such that $6xyz+30xy+21xz+2yz+105x+10y+7z=812$, find $x+y...",Computational Error,0.4,4,10,10,False,"{'Computational Error': 4, 'Mislabeling': 4, 'Incomplete Solution': 1, 'Logic Error': 1}"

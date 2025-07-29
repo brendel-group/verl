@@ -1,0 +1,5 @@
+prompt_name,success_rate,parsing_rate,high_confidence_entries,unanimous_entries,total_responses,total_parsed
+baseline,1.0,0.822,25,11,500,411
+structured,0.88,0.456,16,13,500,228
+concise,1.0,0.946,31,13,500,473
+guided,0.76,0.274,30,28,500,137

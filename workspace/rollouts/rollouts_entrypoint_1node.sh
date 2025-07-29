@@ -75,25 +75,44 @@ fi
 
 if [ -z "${CHECKPOINT}" ]; then
     # CHECKPOINT is unset or empty
-    CHECKPOINT=None
+    CHECKPOINT=null
+fi
+
+if [ -z "${TIMESTAMP}" ]; then
+    echo "ERROR: TIMESTAMP is not set. Please export it before running this script."
+    exit 1
+fi
+
+if [ -z "${IDENTIFIER}" ]; then
+    # IDENTIFIER is unset or empty
+    IDENTIFIER=""
 fi
 
 # =====================
 # 1. Project, Experiment, and Paths
 # =====================
+
+# Set PyTorch memory management for better fragmentation handling
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 project_name='rollouts'  # Name of the project
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/u/rfechner"}  # Base directory for data and checkpoints
-take_first_n=1024  # Number of questions to take from the dataset
-timestamp=$(date +"%Y%m%d_%H%M%S")  # Timestamp for unique checkpointing
-exp_name="${MODEL_PATH}_${DATASET_NAME}_${timestamp}/nrollouts_${ROLLOUTS}_chunk${SLURM_IDX}"  # Experiment name string
-CKPTS_DIR="${RAY_DATA_HOME}/out/${project_name}/${exp_name}"  # Checkpoint directory
+
+# Use timestamp passed from environment variable
+# Build experiment name with optional identifier
+if [ -n "${IDENTIFIER}" ]; then
+    EXPERIMENT_NAME="${MODEL_PATH}_${DATASET_NAME}_nrollouts_${ROLLOUTS}_${TIMESTAMP}_${IDENTIFIER}/chunk${SLURM_IDX}"
+else
+    EXPERIMENT_NAME="${MODEL_PATH}_${DATASET_NAME}_nrollouts_${ROLLOUTS}_${TIMESTAMP}/chunk${SLURM_IDX}"
+fi
+CHECKPOINTS_DIR="${RAY_DATA_HOME}/out/${project_name}/${EXPERIMENT_NAME}"  # Checkpoint directory
 FILE="${RAY_DATA_HOME}/data/${DATASET_PATH}"
 
 # =====================
 # 2. Model and Generation Settings
 # =====================
 max_prompt_length=1024  # Maximum prompt length
-max_response_length=$((1024 * 3))  # Maximum response length
+max_response_length=2048  # Reduced from 3072 to save memory (like in train script)
 val_top_k=-1  # Top-k for validation generation
 val_temperature=0.6  # Temperature for validation generation
 
@@ -102,9 +121,9 @@ python3 -m verl.trainer.main_generation \
     trainer.nnodes=1 \
     trainer.n_gpus_per_node=4 \
     data.path="${FILE}" \
-    data.output_path="${CKPTS_DIR}/results.parquet" \
+    data.output_path="${CHECKPOINTS_DIR}/results.parquet" \
     data.n_samples=${ROLLOUTS} \
-    data.batch_size=16 \
+    data.batch_size=12 \
     +data.compute_scores=True \
     +data.CHUNK_SIZE=${CHUNK_SIZE} \
     +data.SLURM_IDX=${SLURM_IDX} \
@@ -116,8 +135,10 @@ python3 -m verl.trainer.main_generation \
     rollout.top_k=${val_top_k} \
     rollout.prompt_length=${max_prompt_length} \
     rollout.response_length=${max_response_length} \
-    rollout.tensor_model_parallel_size=2 \
-    rollout.gpu_memory_utilization=0.8 \
+    rollout.tensor_model_parallel_size=1 \
+    rollout.gpu_memory_utilization=0.65 \
+    rollout.enable_chunked_prefill=True \
+    rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
 
 echo "========================================================"
 echo "Script execution finished with exit code: $?"

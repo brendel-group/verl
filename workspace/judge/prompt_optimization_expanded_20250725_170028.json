@@ -1,0 +1,2803 @@
+{
+  "timestamp": "20250725_170028",
+  "config": {
+    "num_samples": 50,
+    "num_responses": 10,
+    "total_responses_generated": 2000
+  },
+  "results": {
+    "baseline": {
+      "success_rate": 1.0,
+      "parsing_rate": 0.822,
+      "total_responses": 500,
+      "total_parsed": 411,
+      "successful_entries": 50,
+      "high_confidence_entries": 25,
+      "unanimous_entries": 11,
+      "majority_category_distribution": {
+        "Conceptual Misunderstanding": 22,
+        "Mislabeling": 1,
+        "Computational Error": 22,
+        "Incomplete Solution": 3,
+        "Logic Error": 2
+      },
+      "entry_results": [
+        {
+          "index": 319,
+          "reward": 0.0,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 5,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 5,
+            "Incomplete Solution": 4,
+            "Mislabeling": 1
+          }
+        },
+        {
+          "index": 333,
+          "reward": 0.0,
+          "majority_category": "Mislabeling",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Mislabeling": 2,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 85,
+          "reward": 0.0009765625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.875,
+          "majority_count": 7,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 7,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 427,
+          "reward": 0.001953125,
+          "majority_category": "Computational Error",
+          "confidence": 0.5,
+          "majority_count": 4,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 4
+          }
+        },
+        {
+          "index": 295,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 7,
+            "Conceptual Misunderstanding": 3
+          }
+        },
+        {
+          "index": 91,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Conceptual Misunderstanding": 2
+          }
+        },
+        {
+          "index": 635,
+          "reward": 0.005859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.625,
+          "majority_count": 5,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 5,
+            "Logic Error": 3
+          }
+        },
+        {
+          "index": 414,
+          "reward": 0.0068359375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Computational Error": 4
+          }
+        },
+        {
+          "index": 20,
+          "reward": 0.0107421875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 620,
+          "reward": 0.01171875,
+          "majority_category": "Incomplete Solution",
+          "confidence": 0.4,
+          "majority_count": 4,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Mislabeling": 2,
+            "Incomplete Solution": 4,
+            "Conceptual Misunderstanding": 2,
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 213,
+          "reward": 0.015625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Computational Error": 4
+          }
+        },
+        {
+          "index": 106,
+          "reward": 0.029296875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 469,
+          "reward": 0.03125,
+          "majority_category": "Computational Error",
+          "confidence": 0.5714285714285714,
+          "majority_count": 4,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3,
+            "Computational Error": 4
+          }
+        },
+        {
+          "index": 50,
+          "reward": 0.03515625,
+          "majority_category": "Computational Error",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3,
+            "Computational Error": 7
+          }
+        },
+        {
+          "index": 592,
+          "reward": 0.041015625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 34,
+          "reward": 0.0419921875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 7,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 7
+          }
+        },
+        {
+          "index": 596,
+          "reward": 0.046875,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Computational Error": 9
+          }
+        },
+        {
+          "index": 595,
+          "reward": 0.052734375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 5,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 5,
+            "Computational Error": 5
+          }
+        },
+        {
+          "index": 541,
+          "reward": 0.056640625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.75,
+          "majority_count": 3,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 117,
+          "reward": 0.080078125,
+          "majority_category": "Computational Error",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Logic Error": 1,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 390,
+          "reward": 0.0849609375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8571428571428571,
+          "majority_count": 6,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 662,
+          "reward": 0.0859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.625,
+          "majority_count": 5,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 3,
+            "Conceptual Misunderstanding": 5
+          }
+        },
+        {
+          "index": 277,
+          "reward": 0.0908203125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 2,
+            "Conceptual Misunderstanding": 8
+          }
+        },
+        {
+          "index": 649,
+          "reward": 0.1025390625,
+          "majority_category": "Computational Error",
+          "confidence": 0.8888888888888888,
+          "majority_count": 8,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Mislabeling": 1
+          }
+        },
+        {
+          "index": 165,
+          "reward": 0.1171875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 594,
+          "reward": 0.119140625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 6
+          }
+        },
+        {
+          "index": 678,
+          "reward": 0.134765625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 2
+          }
+        },
+        {
+          "index": 496,
+          "reward": 0.1494140625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8888888888888888,
+          "majority_count": 8,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 302,
+          "reward": 0.154296875,
+          "majority_category": "Computational Error",
+          "confidence": 0.75,
+          "majority_count": 3,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 3,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 447,
+          "reward": 0.1884765625,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 6,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 6,
+            "Conceptual Misunderstanding": 3
+          }
+        },
+        {
+          "index": 452,
+          "reward": 0.203125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 531,
+          "reward": 0.20703125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 7,
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 222,
+          "reward": 0.208984375,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 9,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 9
+          }
+        },
+        {
+          "index": 107,
+          "reward": 0.2197265625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 6
+          }
+        },
+        {
+          "index": 394,
+          "reward": 0.220703125,
+          "majority_category": "Logic Error",
+          "confidence": 0.3333333333333333,
+          "majority_count": 2,
+          "total_parsed": 6,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Logic Error": 2,
+            "Incomplete Solution": 1,
+            "Conceptual Misunderstanding": 1,
+            "Computational Error": 1,
+            "Tool misuse": 1
+          }
+        },
+        {
+          "index": 655,
+          "reward": 0.2265625,
+          "majority_category": "Computational Error",
+          "confidence": 0.6,
+          "majority_count": 3,
+          "total_parsed": 5,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 3,
+            "Incomplete Solution": 1,
+            "Logic Error": 1
+          }
+        },
+        {
+          "index": 84,
+          "reward": 0.2294921875,
+          "majority_category": "Logic Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Logic Error": 1
+          }
+        },
+        {
+          "index": 308,
+          "reward": 0.2353515625,
+          "majority_category": "Incomplete Solution",
+          "confidence": 0.4,
+          "majority_count": 4,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Mislabeling": 2,
+            "Computational Error": 1,
+            "Incomplete Solution": 4,
+            "Conceptual Misunderstanding": 3
+          }
+        },
+        {
+          "index": 200,
+          "reward": 0.23828125,
+          "majority_category": "Computational Error",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Conceptual Misunderstanding": 2
+          }
+        },
+        {
+          "index": 150,
+          "reward": 0.24609375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 622,
+          "reward": 0.248046875,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 437,
+          "reward": 0.2587890625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 514,
+          "reward": 0.2607421875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 472,
+          "reward": 0.263671875,
+          "majority_category": "Incomplete Solution",
+          "confidence": 0.75,
+          "majority_count": 3,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Incomplete Solution": 3
+          }
+        },
+        {
+          "index": 617,
+          "reward": 0.2861328125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 9,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 438,
+          "reward": 0.287109375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 2
+          }
+        },
+        {
+          "index": 521,
+          "reward": 0.298828125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 74,
+          "reward": 0.3076171875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 4,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 4,
+            "Incomplete Solution": 2,
+            "Mislabeling": 2
+          }
+        },
+        {
+          "index": 54,
+          "reward": 0.30859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 7,
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 266,
+          "reward": 0.314453125,
+          "majority_category": "Computational Error",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 7,
+            "Conceptual Misunderstanding": 2,
+            "Incomplete Solution": 1
+          }
+        }
+      ]
+    },
+    "structured": {
+      "success_rate": 0.88,
+      "parsing_rate": 0.456,
+      "total_responses": 500,
+      "total_parsed": 228,
+      "successful_entries": 44,
+      "high_confidence_entries": 16,
+      "unanimous_entries": 13,
+      "majority_category_distribution": {
+        "Conceptual Misunderstanding": 17,
+        "Computational Error": 20,
+        "Logic Error": 2,
+        "Incomplete Solution": 4,
+        "Mislabeling": 1
+      },
+      "entry_results": [
+        {
+          "index": 319,
+          "reward": 0.0,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 2,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 2,
+            "Incomplete Solution": 1,
+            "Tool misuse": 1
+          }
+        },
+        {
+          "index": 333,
+          "reward": 0.0,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 9,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 9
+          }
+        },
+        {
+          "index": 85,
+          "reward": 0.0009765625,
+          "majority_category": "Logic Error",
+          "confidence": 0.4,
+          "majority_count": 2,
+          "total_parsed": 5,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Logic Error": 2,
+            "Computational Error": 2,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 427,
+          "reward": 0.001953125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3
+          }
+        },
+        {
+          "index": 295,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 0.7142857142857143,
+          "majority_count": 5,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Mislabeling": 1,
+            "Computational Error": 5,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 91,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 635,
+          "reward": 0.005859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 2
+          }
+        },
+        {
+          "index": 414,
+          "reward": 0.0068359375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 1,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 20,
+          "reward": 0.0107421875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6666666666666666,
+          "majority_count": 4,
+          "total_parsed": 6,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 4,
+            "Computational Error": 1,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 620,
+          "reward": 0.01171875,
+          "majority_category": "Computational Error",
+          "confidence": 0.7142857142857143,
+          "majority_count": 5,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Mislabeling": 1,
+            "Computational Error": 5,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 213,
+          "reward": 0.015625,
+          "majority_category": "Incomplete Solution",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Incomplete Solution": 2
+          }
+        },
+        {
+          "index": 106,
+          "reward": 0.029296875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 3,
+          "total_parsed": 6,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3,
+            "Logic Error": 1,
+            "Computational Error": 1,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 469,
+          "reward": 0.03125,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 2,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 50,
+          "reward": 0.03515625,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Logic Error": 1,
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 592,
+          "reward": 0.041015625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.42857142857142855,
+          "majority_count": 3,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3,
+            "Tool misuse": 1,
+            "Computational Error": 2,
+            "Logic Error": 1
+          }
+        },
+        {
+          "index": 34,
+          "reward": 0.0419921875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 596,
+          "reward": 0.046875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.4444444444444444,
+          "majority_count": 4,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 4,
+            "Computational Error": 4,
+            "Logic Error": 1
+          }
+        },
+        {
+          "index": 595,
+          "reward": 0.052734375,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 541,
+          "reward": 0.056640625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5714285714285714,
+          "majority_count": 4,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 4,
+            "Incomplete Solution": 3
+          }
+        },
+        {
+          "index": 117,
+          "reward": 0.080078125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 390,
+          "reward": 0.0849609375,
+          "majority_category": "Incomplete Solution",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 662,
+          "reward": 0.0859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.75,
+          "majority_count": 6,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 1,
+            "Conceptual Misunderstanding": 6,
+            "Logic Error": 1
+          }
+        },
+        {
+          "index": 277,
+          "reward": 0.0908203125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 649,
+          "reward": 0.1025390625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 165,
+          "reward": 0.1171875,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 2,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 594,
+          "reward": 0.119140625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 678,
+          "reward": 0.134765625,
+          "majority_category": "Computational Error",
+          "confidence": 0.5,
+          "majority_count": 5,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 3,
+            "Computational Error": 5,
+            "Logic Error": 1,
+            "Tool misuse": 1
+          }
+        },
+        {
+          "index": 496,
+          "reward": 0.1494140625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.875,
+          "majority_count": 7,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 7,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 302,
+          "reward": 0.154296875,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 447,
+          "reward": 0.1884765625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.75,
+          "majority_count": 3,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 452,
+          "reward": 0.203125,
+          "majority_category": "Computational Error",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 6,
+            "Conceptual Misunderstanding": 4
+          }
+        },
+        {
+          "index": 531,
+          "reward": 0.20703125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3
+          }
+        },
+        {
+          "index": 222,
+          "reward": 0.208984375,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 4,
+          "total_parsed": 6,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 1,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 107,
+          "reward": 0.2197265625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 394,
+          "reward": 0.220703125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 655,
+          "reward": 0.2265625,
+          "majority_category": "Computational Error",
+          "confidence": 0.5,
+          "majority_count": 2,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Computational Error": 2,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 84,
+          "reward": 0.2294921875,
+          "majority_category": "Computational Error",
+          "confidence": 0.4444444444444444,
+          "majority_count": 4,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 2,
+            "Mislabeling": 1,
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 2
+          }
+        },
+        {
+          "index": 308,
+          "reward": 0.2353515625,
+          "majority_category": "Mislabeling",
+          "confidence": 0.375,
+          "majority_count": 3,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Mislabeling": 3,
+            "Conceptual Misunderstanding": 2,
+            "Incomplete Solution": 3
+          }
+        },
+        {
+          "index": 200,
+          "reward": 0.23828125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 150,
+          "reward": 0.24609375,
+          "majority_category": "Logic Error",
+          "confidence": 0.4,
+          "majority_count": 2,
+          "total_parsed": 5,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Logic Error": 2,
+            "Conceptual Misunderstanding": 1,
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 622,
+          "reward": 0.248046875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8571428571428571,
+          "majority_count": 6,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Logic Error": 1
+          }
+        },
+        {
+          "index": 437,
+          "reward": 0.2587890625,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 2,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 514,
+          "reward": 0.2607421875,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 472,
+          "reward": 0.263671875,
+          "majority_category": "Incomplete Solution",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 7,
+            "Computational Error": 2,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 617,
+          "reward": 0.2861328125,
+          "majority_category": "Incomplete Solution",
+          "confidence": 0.7777777777777778,
+          "majority_count": 7,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 7,
+            "Computational Error": 1,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 438,
+          "reward": 0.287109375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 2,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 2,
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 521,
+          "reward": 0.298828125,
+          "majority_category": "Computational Error",
+          "confidence": 0.8888888888888888,
+          "majority_count": 8,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Mislabeling": 1
+          }
+        },
+        {
+          "index": 74,
+          "reward": 0.3076171875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 5,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 5,
+            "Computational Error": 4,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 54,
+          "reward": 0.30859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 266,
+          "reward": 0.314453125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        }
+      ]
+    },
+    "concise": {
+      "success_rate": 1.0,
+      "parsing_rate": 0.946,
+      "total_responses": 500,
+      "total_parsed": 473,
+      "successful_entries": 50,
+      "high_confidence_entries": 31,
+      "unanimous_entries": 13,
+      "majority_category_distribution": {
+        "Conceptual Misunderstanding": 21,
+        "Computational Error": 28,
+        "Logic Error": 1
+      },
+      "entry_results": [
+        {
+          "index": 319,
+          "reward": 0.0,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 9,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 333,
+          "reward": 0.0,
+          "majority_category": "Computational Error",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 7,
+            "Conceptual Misunderstanding": 3
+          }
+        },
+        {
+          "index": 85,
+          "reward": 0.0009765625,
+          "majority_category": "Computational Error",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 7,
+            "Conceptual Misunderstanding": 3
+          }
+        },
+        {
+          "index": 427,
+          "reward": 0.001953125,
+          "majority_category": "Computational Error",
+          "confidence": 0.5,
+          "majority_count": 5,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 5,
+            "Conceptual Misunderstanding": 5
+          }
+        },
+        {
+          "index": 295,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 91,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 0.5555555555555556,
+          "majority_count": 5,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 5,
+            "Conceptual Misunderstanding": 4
+          }
+        },
+        {
+          "index": 635,
+          "reward": 0.005859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 10
+          }
+        },
+        {
+          "index": 414,
+          "reward": 0.0068359375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 6
+          }
+        },
+        {
+          "index": 20,
+          "reward": 0.0107421875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 6
+          }
+        },
+        {
+          "index": 620,
+          "reward": 0.01171875,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 213,
+          "reward": 0.015625,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 106,
+          "reward": 0.029296875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Incomplete Solution": 2,
+            "Logic Error": 2
+          }
+        },
+        {
+          "index": 469,
+          "reward": 0.03125,
+          "majority_category": "Computational Error",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Conceptual Misunderstanding": 2
+          }
+        },
+        {
+          "index": 50,
+          "reward": 0.03515625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 592,
+          "reward": 0.041015625,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 34,
+          "reward": 0.0419921875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 596,
+          "reward": 0.046875,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 595,
+          "reward": 0.052734375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 10
+          }
+        },
+        {
+          "index": 541,
+          "reward": 0.056640625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 9,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 117,
+          "reward": 0.080078125,
+          "majority_category": "Computational Error",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Incomplete Solution": 2
+          }
+        },
+        {
+          "index": 390,
+          "reward": 0.0849609375,
+          "majority_category": "Logic Error",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Computational Error": 2,
+            "Incomplete Solution": 1,
+            "Logic Error": 6
+          }
+        },
+        {
+          "index": 662,
+          "reward": 0.0859375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 9,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 277,
+          "reward": 0.0908203125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Computational Error": 4
+          }
+        },
+        {
+          "index": 649,
+          "reward": 0.1025390625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 165,
+          "reward": 0.1171875,
+          "majority_category": "Computational Error",
+          "confidence": 0.7,
+          "majority_count": 7,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 3,
+            "Computational Error": 7
+          }
+        },
+        {
+          "index": 594,
+          "reward": 0.119140625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 5,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 5,
+            "Incomplete Solution": 2,
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 678,
+          "reward": 0.134765625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 3,
+          "total_parsed": 6,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 2,
+            "Conceptual Misunderstanding": 3,
+            "Tool misuse": 1
+          }
+        },
+        {
+          "index": 496,
+          "reward": 0.1494140625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8888888888888888,
+          "majority_count": 8,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Logic Error": 1
+          }
+        },
+        {
+          "index": 302,
+          "reward": 0.154296875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Incomplete Solution": 2
+          }
+        },
+        {
+          "index": 447,
+          "reward": 0.1884765625,
+          "majority_category": "Computational Error",
+          "confidence": 0.5,
+          "majority_count": 5,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 5,
+            "Conceptual Misunderstanding": 5
+          }
+        },
+        {
+          "index": 452,
+          "reward": 0.203125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 531,
+          "reward": 0.20703125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 4,
+            "Conceptual Misunderstanding": 6
+          }
+        },
+        {
+          "index": 222,
+          "reward": 0.208984375,
+          "majority_category": "Computational Error",
+          "confidence": 0.8888888888888888,
+          "majority_count": 8,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 8,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 107,
+          "reward": 0.2197265625,
+          "majority_category": "Computational Error",
+          "confidence": 0.4444444444444444,
+          "majority_count": 4,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 3,
+            "Conceptual Misunderstanding": 2,
+            "Computational Error": 4
+          }
+        },
+        {
+          "index": 394,
+          "reward": 0.220703125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 10
+          }
+        },
+        {
+          "index": 655,
+          "reward": 0.2265625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8571428571428571,
+          "majority_count": 6,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 84,
+          "reward": 0.2294921875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 308,
+          "reward": 0.2353515625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 6,
+            "Computational Error": 4
+          }
+        },
+        {
+          "index": 200,
+          "reward": 0.23828125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 150,
+          "reward": 0.24609375,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 622,
+          "reward": 0.248046875,
+          "majority_category": "Computational Error",
+          "confidence": 0.9,
+          "majority_count": 9,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 9,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 437,
+          "reward": 0.2587890625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 514,
+          "reward": 0.2607421875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 8,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 8
+          }
+        },
+        {
+          "index": 472,
+          "reward": 0.263671875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 3,
+          "total_parsed": 6,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 2,
+            "Conceptual Misunderstanding": 3,
+            "Tool misuse": 1
+          }
+        },
+        {
+          "index": 617,
+          "reward": 0.2861328125,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8,
+          "majority_count": 8,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Incomplete Solution": 2
+          }
+        },
+        {
+          "index": 438,
+          "reward": 0.287109375,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 10
+          }
+        },
+        {
+          "index": 521,
+          "reward": 0.298828125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 10,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 10
+          }
+        },
+        {
+          "index": 74,
+          "reward": 0.3076171875,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.8888888888888888,
+          "majority_count": 8,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 8,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 54,
+          "reward": 0.30859375,
+          "majority_category": "Computational Error",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 6,
+            "Conceptual Misunderstanding": 4
+          }
+        },
+        {
+          "index": 266,
+          "reward": 0.314453125,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 6,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 6,
+            "Conceptual Misunderstanding": 3
+          }
+        }
+      ]
+    },
+    "guided": {
+      "success_rate": 0.76,
+      "parsing_rate": 0.274,
+      "total_responses": 500,
+      "total_parsed": 137,
+      "successful_entries": 38,
+      "high_confidence_entries": 30,
+      "unanimous_entries": 28,
+      "majority_category_distribution": {
+        "Computational Error": 35,
+        "Conceptual Misunderstanding": 2,
+        "Incomplete Solution": 1
+      },
+      "entry_results": [
+        {
+          "index": 319,
+          "reward": 0.0,
+          "majority_category": "Computational Error",
+          "confidence": 0.5,
+          "majority_count": 1,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 1,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 333,
+          "reward": 0.0,
+          "majority_category": "Computational Error",
+          "confidence": 0.7142857142857143,
+          "majority_count": 5,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Computational Error": 5,
+            "Incomplete Solution": 1
+          }
+        },
+        {
+          "index": 85,
+          "reward": 0.0009765625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 0.5,
+          "majority_count": 1,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 427,
+          "reward": 0.001953125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 295,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 91,
+          "reward": 0.0029296875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 5,
+          "total_parsed": 5,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 5
+          }
+        },
+        {
+          "index": 635,
+          "reward": 0.005859375,
+          "majority_category": "Computational Error",
+          "confidence": 0.75,
+          "majority_count": 3,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 1,
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 414,
+          "reward": 0.0068359375,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 20,
+          "reward": 0.0107421875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 620,
+          "reward": 0.01171875,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 2,
+            "Mislabeling": 1
+          }
+        },
+        {
+          "index": 213,
+          "reward": 0.015625,
+          "majority_category": "Computational Error",
+          "confidence": 0.5,
+          "majority_count": 1,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 1,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 106,
+          "reward": 0.029296875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 469,
+          "reward": 0.03125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 50,
+          "reward": 0.03515625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 592,
+          "reward": 0.041015625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 34,
+          "reward": 0.0419921875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 596,
+          "reward": 0.046875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 595,
+          "reward": 0.052734375,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 541,
+          "reward": 0.056640625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 8,
+          "total_parsed": 8,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 8
+          }
+        },
+        {
+          "index": 117,
+          "reward": 0.080078125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 390,
+          "reward": 0.0849609375,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 662,
+          "reward": 0.0859375,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 277,
+          "reward": 0.0908203125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 649,
+          "reward": 0.1025390625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 165,
+          "reward": 0.1171875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 594,
+          "reward": 0.119140625,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 678,
+          "reward": 0.134765625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 496,
+          "reward": 0.1494140625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 9,
+          "total_parsed": 9,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 9
+          }
+        },
+        {
+          "index": 302,
+          "reward": 0.154296875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 447,
+          "reward": 0.1884765625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 2,
+          "total_parsed": 2,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 2
+          }
+        },
+        {
+          "index": 452,
+          "reward": 0.203125,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 7,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 7
+          }
+        },
+        {
+          "index": 531,
+          "reward": 0.20703125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 222,
+          "reward": 0.208984375,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 107,
+          "reward": 0.2197265625,
+          "majority_category": "Conceptual Misunderstanding",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 394,
+          "reward": 0.220703125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 655,
+          "reward": 0.2265625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 3,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 3
+          }
+        },
+        {
+          "index": 84,
+          "reward": 0.2294921875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 7,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 7
+          }
+        },
+        {
+          "index": 308,
+          "reward": 0.2353515625,
+          "majority_category": "Computational Error",
+          "confidence": 0.6,
+          "majority_count": 6,
+          "total_parsed": 10,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 6,
+            "Conceptual Misunderstanding": 3,
+            "Tool misuse": 1
+          }
+        },
+        {
+          "index": 200,
+          "reward": 0.23828125,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 150,
+          "reward": 0.24609375,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 622,
+          "reward": 0.248046875,
+          "majority_category": null,
+          "confidence": 0.0,
+          "majority_count": 0,
+          "total_parsed": 0,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {}
+        },
+        {
+          "index": 437,
+          "reward": 0.2587890625,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 5,
+          "total_parsed": 5,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 5
+          }
+        },
+        {
+          "index": 514,
+          "reward": 0.2607421875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 472,
+          "reward": 0.263671875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 7,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 7
+          }
+        },
+        {
+          "index": 617,
+          "reward": 0.2861328125,
+          "majority_category": "Incomplete Solution",
+          "confidence": 0.8,
+          "majority_count": 4,
+          "total_parsed": 5,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 4,
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 438,
+          "reward": 0.287109375,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 4,
+          "total_parsed": 4,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 4
+          }
+        },
+        {
+          "index": 521,
+          "reward": 0.298828125,
+          "majority_category": "Computational Error",
+          "confidence": 0.8571428571428571,
+          "majority_count": 6,
+          "total_parsed": 7,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Computational Error": 6,
+            "Conceptual Misunderstanding": 1
+          }
+        },
+        {
+          "index": 74,
+          "reward": 0.3076171875,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 5,
+          "total_parsed": 5,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 5
+          }
+        },
+        {
+          "index": 54,
+          "reward": 0.30859375,
+          "majority_category": "Computational Error",
+          "confidence": 1.0,
+          "majority_count": 1,
+          "total_parsed": 1,
+          "total_responses": 10,
+          "is_unanimous": true,
+          "category_distribution": {
+            "Computational Error": 1
+          }
+        },
+        {
+          "index": 266,
+          "reward": 0.314453125,
+          "majority_category": "Computational Error",
+          "confidence": 0.6666666666666666,
+          "majority_count": 2,
+          "total_parsed": 3,
+          "total_responses": 10,
+          "is_unanimous": false,
+          "category_distribution": {
+            "Incomplete Solution": 1,
+            "Computational Error": 2
+          }
+        }
+      ]
+    }
+  },
+  "best_prompt": "baseline"
+}
