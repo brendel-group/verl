@@ -100,7 +100,7 @@ actor_rollout_ref:
     # for hf rollout
     do_sample: True
     # number of responses (i.e. num sample times)
-    n: 1 # > 1 for grpo
+    n: 1 # > 1 for grpo (REQUIRED: set to 5-8 for GRPO, 1 for other algorithms)
     n_advantage_tracking: 1 # this is the size of group for advantage tracking
 
     val_kwargs:

@@ -20,6 +20,7 @@ import os
 import warnings
 import psutil
 
+import numpy as np
 import torch
 import torch.distributed
 from torch.distributed.device_mesh import init_device_mesh
@@ -471,7 +472,6 @@ class ActorRolloutRefWorker(Worker):
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
         if self._is_offload_optimizer:
             offload_fsdp_optimizer(optimizer=self.actor_optimizer)
-
         return output
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
@@ -528,6 +528,8 @@ class ActorRolloutRefWorker(Worker):
         data.meta_info['max_token_len'] = self.config.rollout.log_prob_max_token_len_per_gpu
         data.meta_info['use_dynamic_bsz'] = self.config.rollout.log_prob_use_dynamic_bsz
         data.meta_info['temperature'] = self.config.rollout.temperature
+        logger.info(data.meta_info)
+
         # perform recompute log_prob
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
@@ -578,7 +580,7 @@ class ActorRolloutRefWorker(Worker):
         return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, remove_previous_ckpt=False):
+    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, remove_previous_ckpt=False, update_previous_path=True):
         # only support save and load ckpt for actor
         assert self._is_actor
         import torch
@@ -588,7 +590,8 @@ class ActorRolloutRefWorker(Worker):
         self.checkpoint_manager.save_checkpoint(local_path=local_path,
                                                 hdfs_path=hdfs_path,
                                                 global_step=global_step,
-                                                remove_previous_ckpt=remove_previous_ckpt)
+                                                remove_previous_ckpt=remove_previous_ckpt,
+                                                update_previous_path=update_previous_path)
 
         torch.distributed.barrier()
         if self._is_offload_param:
@@ -864,7 +867,7 @@ class CriticWorker(Worker):
         return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, remove_previous_ckpt=False):
+    def save_checkpoint(self, local_path, hdfs_path=None, global_step=0, remove_previous_ckpt=False, update_previous_path=True):
         import torch
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.critic_module)
@@ -872,7 +875,8 @@ class CriticWorker(Worker):
         self.checkpoint_manager.save_checkpoint(local_path=local_path,
                                                 hdfs_path=hdfs_path,
                                                 global_step=global_step,
-                                                remove_previous_ckpt=remove_previous_ckpt)
+                                                remove_previous_ckpt=remove_previous_ckpt,
+                                                update_previous_path=update_previous_path)
 
         torch.distributed.barrier()
         if self._is_offload_param:

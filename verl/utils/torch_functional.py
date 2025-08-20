@@ -104,11 +104,25 @@ def clip_by_value(x, tensor_min, tensor_max):
 
 
 def entropy_from_logits(logits: torch.Tensor):
-    """Calculate entropy from logits."""
-    pd = torch.nn.functional.softmax(logits, dim=-1)
-    entropy = torch.logsumexp(logits, dim=-1) - torch.sum(pd * logits, dim=-1)
-    return entropy
+    """Calculate entropy from logits.
+        TODO: This copies the logits, which are quite large ~48GB over 4GPUs = 12.17GiB per GPU.
+        We're just trying to get the entropy and do currently not care about keeping tracks of gradients.
+        Could we instead unroll this operation to reduce peak memory consumption?
 
+        Recipe: iterate over sequence length axis:
+            chunksize 64, compute the statistics, then allocate into a list.
+    """
+    CHUNKSIZE=64
+    entropy_accu = []
+
+    for i in range(0, logits.shape[1], CHUNKSIZE):
+        batch = logits[:, i:i+CHUNKSIZE, :]
+        pd = torch.nn.functional.softmax(batch, dim=-1)
+        entropy = torch.logsumexp(batch, dim=-1) - torch.sum(pd * batch, dim=-1)
+        entropy_accu.append(entropy)
+
+    return torch.concatenate(entropy_accu, dim=1)
+    
 
 def masked_sum(values, mask, axis=None):
     """Compute mean of tensor with a masked values."""

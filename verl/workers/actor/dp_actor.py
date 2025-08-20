@@ -15,6 +15,9 @@
 Single Process Actor
 """
 
+import numpy as np
+import os
+import logging
 import itertools
 from typing import Iterable, Tuple
 
@@ -30,11 +33,13 @@ from verl.utils.torch_functional import logprobs_from_logits, masked_mean
 from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_unpad
 from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
 import verl.utils.torch_functional as verl_F
+from verl.utils.debug import log_gpu_memory_usage
 
 from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
 
 __all__ = ['DataParallelPPOActor']
-
+logger = logging.getLogger(__file__)
+logger.setLevel(os.getenv('VERL_PPO_LOGGING_LEVEL', 'WARN'))
 
 class DataParallelPPOActor(BasePPOActor):
 
@@ -120,7 +125,7 @@ class DataParallelPPOActor(BasePPOActor):
                 entropy_rmpad = self.compute_entropy_from_logits(logits_rmpad)  # ((total_nnz / sp) + pad)
 
                 # if use_sp: ((total_nnz / sp) + pad) ; if not use_sp: (batch, seqlen)
-                log_probs = logprobs_from_logits(logits=logits_rmpad, labels=input_ids_rmpad_rolled)
+                log_probs = logprobs_from_logits(logits=logits_rmpad, labels=input_ids_rmpad_rolled)                
 
                 # gather log_prob if sp > 1
                 if self.use_ulysses_sp:
@@ -150,13 +155,118 @@ class DataParallelPPOActor(BasePPOActor):
                                            position_ids=position_ids,
                                            **multi_modal_inputs,
                                            use_cache=False)  # prevent model thinks we are generating
+
                 logits = output.logits
                 logits.div_(temperature)
                 logits = logits[:, -response_length - 1:-1, :]  # (bsz, response_length, vocab_size)
+                
+                print(f'Response length: {response_length}')
+                print(f'Logits.shape: {logits.shape}')
+                
+                log_gpu_memory_usage("After logit computation", logger=logger)
+
+                # TODO: perhaps have to make this more computationally feasible. Still: I do not understand why we want
+                # to allocate 12 GiB with these operation...
                 log_probs = logprobs_from_logits(logits, micro_batch['responses'])
+
+                print(f"Log probs.shape: {log_probs.shape}")
+                # TODO: maybe use an approximation to the entropy instead...
                 entropy = verl_F.entropy_from_logits(logits)  # (bsz, response_length)
 
-            return entropy, log_probs
+                log_gpu_memory_usage("After entropy computation", logger=logger)
+
+                print(f"Optimizer: {type(self.actor_optimizer)}, Found DEV_ESTIMATE_ENTROPY_DELTA: {self.config.get('DEV_ESTIMATE_ENTROPY_DELTA', False)}")
+                if self.config.get('DEV_ESTIMATE_ENTROPY_DELTA', False) and self.actor_module.training:
+                    """
+                    Entropy Delta Estimation using Policy Gradient Loss Approximation
+
+                    We compute the gradient of policy loss w.r.t. logits to estimate entropy changes.
+
+                    For PSR (advantage > 0) and NSR (advantage < 0):
+
+                    -dL_PSR/dz_v ∝ {  π(y_t)(1-π(y_t))                  if v = y_t
+                                     -π(y_v)π(y_t)                      if v ≠ y_t }
+
+                    -dL_NSR/dz_v ∝ { -π(y_t)(1-π(y_t))                  if v = y_t
+                                      π(y_v)π(y_t)                      if v ≠ y_t }
+
+                    Scaling: advantage / sequence_length
+                    """
+
+                    ALPHA, APPROX_K = 1e-6, 100
+
+                    # 1) Top-K over vocabulary
+                    # logits: (bsz, response_length, vocab)
+                    topk_logits, topk_indices = torch.topk(input=logits, k=APPROX_K, dim=-1)  # (B, L, K), (B, L, K)
+
+                    # 2) Force-include sampled tokens in top-k (overwrite the last slot if missing)
+                    sampled_tokens = micro_batch['responses']                                     # (B, L) token ids
+                    sampled_logits_full = torch.gather(logits, -1, sampled_tokens.unsqueeze(-1))  # (B, L, 1)
+
+                    # whether sampled token already in top-k
+                    sampled_in_topk_mask = (topk_indices == sampled_tokens.unsqueeze(-1))         # (B, L, K)
+                    missing_mask = ~sampled_in_topk_mask.any(dim=-1, keepdim=True)                # (B, L, 1)
+
+                    # overwrite the last position (index K-1) where missing
+                    last_col = APPROX_K - 1
+                    # logits
+                    topk_logits[..., last_col:last_col+1] = torch.where(
+                        missing_mask, sampled_logits_full, topk_logits[..., last_col:last_col+1]
+                    )
+                    # indices
+                    topk_indices[..., last_col:last_col+1] = torch.where(
+                        missing_mask, sampled_tokens.unsqueeze(-1), topk_indices[..., last_col:last_col+1]
+                    )
+
+                    # 3) Recompute probs over the augmented top-k
+                    topk_log_probs = torch.nn.functional.log_softmax(topk_logits, dim=-1)         # (B, L, K)
+                    topk_probs = topk_log_probs.exp()                                             # (B, L, K)
+
+                    # 4) Entropy gradient term (∂H/∂z) restricted to top-k
+                    # entropy: (B, L)
+                    dH_dz = topk_probs * (topk_log_probs - entropy.unsqueeze(-1))                 # (B, L, K)
+
+                    advantages = micro_batch['advantages']                                        # (B, L)
+                    advantage_scale = (advantages / advantages.size(1)).unsqueeze(-1)             # (B, L, 1)
+
+                    print(f"topk_logits.shape: {topk_logits.shape}")
+                    print(f"topk_indices.shape: {topk_indices.shape}")
+                    print(f"advantages.shape: {advantages.shape}")
+
+                    # 5) Locate sampled positions in the (augmented) top-k and gather π(y_t)
+                    sampled_mask = (topk_indices == sampled_tokens.unsqueeze(-1))                 # (B, L, K)
+                    # Argmax is safe because sampled is guaranteed to be present now.
+                    sampled_pos = sampled_mask.to(torch.int32).argmax(dim=-1, keepdim=True)       # (B, L, 1) in [0..K-1]
+                    pi_t = torch.take_along_dim(topk_probs, sampled_pos, dim=-1)                  # (B, L, 1)
+                    print(f'pi_t.shape: {pi_t.shape}')
+
+                    # 6) Build -∂L/∂z over the K entries (vectorized, no flattening)
+                    # For v = y_t:  ± π_t (1 - π_t)
+                    # For v ≠ y_t:  ∓ π_v π_t
+                    pi_t_expanded = pi_t.expand_as(topk_probs)                                    # (B, L, K)
+
+                    neg_dL_dz = torch.zeros_like(topk_probs)
+                    # sampled entries
+                    neg_dL_dz = neg_dL_dz + sampled_mask * (pi_t_expanded * (1.0 - pi_t_expanded))
+                    # unsampled entries
+                    neg_dL_dz = neg_dL_dz + (~sampled_mask) * (-topk_probs * pi_t_expanded)
+
+                    # Apply scaling by advantage / sequence_length (handles PSR/NSR sign automatically)
+                    neg_dL_dz = neg_dL_dz * advantage_scale                                      # (B, L, K)
+
+                    # Convert to positive gradient dL/dz
+                    dL_dz = -neg_dL_dz                                                           # (B, L, K)
+                    print(f'dL_dz.shape: {dL_dz.shape}')
+
+                    # 7) Entropy change estimate
+                    Delta_z = ALPHA * dL_dz                                                      # (B, L, K)
+                    H_t = (dH_dz * Delta_z).sum(dim=-1)
+
+                    log_gpu_memory_usage("After entropy log computation", logger=logger)
+                    return entropy, log_probs, H_t.detach().cpu().numpy()
+
+                return entropy, log_probs
+
 
     def _optimizer_step(self):
         assert self.config.grad_clip is not None
@@ -248,6 +358,9 @@ class DataParallelPPOActor(BasePPOActor):
             dataloader = batch.split(self.config.ppo_mini_batch_size)
 
         metrics = {}
+        entropy_deltas = []
+        advantage_buffer = []
+
         for epoch in range(self.config.ppo_epochs):
             for batch_idx, data in enumerate(dataloader):
                 # split batch into micro_batches
@@ -285,8 +398,16 @@ class DataParallelPPOActor(BasePPOActor):
                     entropy_coeff = self.config.entropy_coeff
                     use_token_level_loss = self.config.use_token_level_loss
                     clipping_mode = self.config.clipping_mode
+
                     # all return: (bsz, response_length)
-                    entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature)
+                    out = self._forward_micro_batch(micro_batch=data, temperature=temperature)
+
+                    if self.config.get('DEV_ESTIMATE_ENTROPY_DELTA', False):
+                        entropy, log_prob, H_t = out
+                        entropy_deltas.append(H_t)
+                        advantage_buffer.append(advantages.detach().clone().cpu().numpy())
+                    else:
+                        entropy, log_prob = out
 
                     pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(
                         old_log_prob=old_log_prob,
@@ -329,10 +450,17 @@ class DataParallelPPOActor(BasePPOActor):
                         'actor/pg_clipfrac': pg_clipfrac.detach().item(),
                         'actor/ppo_kl': ppo_kl.detach().item(),
                     }
+                    
                     append_to_dict(metrics, data)
 
                 grad_norm = self._optimizer_step()
                 data = {'actor/grad_norm': grad_norm.detach().item()}
             append_to_dict(metrics, data)
         self.actor_optimizer.zero_grad()
+
+        # NOTE: DEV_ESTIMATE_ENTROPY_DELTA
+        deltas : np.ndarray = np.concatenate(entropy_deltas)
+        advs : np.ndarray = np.concatenate(advantage_buffer)
+        metrics.update({'actor/H_t' : deltas, 'actor/advantages' : advs})
+        
         return metrics

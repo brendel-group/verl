@@ -55,12 +55,13 @@ def main(config):
 
 def run_ppo(config) -> None:
 
-    if not ray.is_initialized():
-        # Connect to existing Ray cluster (for multi-node SLURM jobs)
-        # Check if RAY_ADDRESS is set (for SLURM multi-node setups)
-        ray_address = os.environ.get('RAY_ADDRESS', 'auto')
-        ray_temp_dir = os.environ.get('RAY_TMPDIR')
-        
+    """
+        For multi-node trainig, we have to have already initialized ray. For manual runs,
+        we have to initialize manually.
+    """
+    ray_address = os.environ.get('RAY_ADDRESS')
+    ray_temp_dir = os.environ.get('RAY_TMPDIR')
+    if ray_address:
         init_kwargs = {
             'address': ray_address,
             'runtime_env': {
@@ -71,12 +72,47 @@ def run_ppo(config) -> None:
                 }
             }
         }
+    else:
+        """
+            Previous manual initialization
+        """
+        init_kwargs={
+            'runtime_env' : {
+                'env_vars': {
+                    'TOKENIZERS_PARALLELISM': 'true',
+                    'NCCL_DEBUG': 'WARN',
+                    'VLLM_LOGGING_LEVEL': 'WARN'
+                }
+            }
+        }
+
+    # Add temp_dir if specified
+    if ray_temp_dir:
+        init_kwargs['_temp_dir'] = ray_temp_dir
+    ray.init(**init_kwargs)
+
+    # if not ray.is_initialized():
+    #     # Connect to existing Ray cluster (for multi-node SLURM jobs)
+    #     # Check if RAY_ADDRESS is set (for SLURM multi-node setups)
+    #     ray_address = os.environ.get('RAY_ADDRESS', 'auto')
+    #     ray_temp_dir = os.environ.get('RAY_TMPDIR')
         
-        # Add temp_dir if specified
-        if ray_temp_dir:
-            init_kwargs['_temp_dir'] = ray_temp_dir
+    #     init_kwargs = {
+    #         'address': ray_address,
+    #         'runtime_env': {
+    #             'env_vars': {
+    #                 'TOKENIZERS_PARALLELISM': 'true',
+    #                 'NCCL_DEBUG': 'WARN',
+    #                 'VLLM_LOGGING_LEVEL': 'WARN'
+    #             }
+    #         }
+    #     }
+        
+    #     # Add temp_dir if specified
+    #     if ray_temp_dir:
+    #         init_kwargs['_temp_dir'] = ray_temp_dir
             
-        ray.init(**init_kwargs)
+    #     ray.init(**init_kwargs)
 
     ray.get(main_task.remote(config))
 

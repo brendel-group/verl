@@ -104,12 +104,48 @@ class FSDPCheckpointManager(BaseCheckpointManager):
         if self.lr_scheduler is not None:
             self.lr_scheduler.load_state_dict(lr_scheduler_state_dict)
 
-    def save_checkpoint(self, local_path: str, global_step: int, remove_previous_ckpt=False, *args, **kwargs):
+    def remove_previous_save_local_path(self):
+        """Override base class to also clean up dataloader state in parent global_step folder"""
+        if not self.previous_save_local_path:
+            return
+
+        abs_path = os.path.abspath(self.previous_save_local_path)
+        print(f'Checkpoint manager remove previous save local path: {abs_path}')
+        if not os.path.exists(abs_path):
+            return
+
+        # HACK: Also clean up dataloader state in the parent global_step folder
+        # The FSDP checkpoint manager belongs to the actor wg and shouldn't technically
+        # delete the dataloader, but we're hacking it here to avoid orphaned data.pt files
+        if self.rank == 0:
+            # Get the parent directory (global_step_X folder)
+            parent_dir = os.path.dirname(abs_path)
+            dataloader_path = os.path.join(parent_dir, 'data.pt')
+            if os.path.exists(dataloader_path):
+                os.remove(dataloader_path)
+                print(f'[rank-{self.rank}]: Removed dataloader state {dataloader_path}')
+
+        # Call parent implementation to remove the actor directory
+        super().remove_previous_save_local_path()
+
+        # Clean up empty parent directory (global_step_X folder) if it's now empty
+        if self.rank == 0:
+            parent_dir = os.path.dirname(abs_path)
+            if os.path.exists(parent_dir):
+                try:
+                    # Check if directory is empty after removing actor and data.pt
+                    if not os.listdir(parent_dir):
+                        os.rmdir(parent_dir)
+                        print(f'[rank-{self.rank}]: Removed empty global_step folder {parent_dir}')
+                except OSError:
+                    # Directory not empty or other error, ignore
+                    pass
+
+    def save_checkpoint(self, local_path: str, global_step: int, remove_previous_ckpt=False, update_previous_path=True, *args, **kwargs):
         # record the previous global step
         self.previous_global_step = global_step
 
         # remove previous local_path
-        # TODO: shall we remove previous ckpt every save?
         if remove_previous_ckpt:
             self.remove_previous_save_local_path()
         local_path = self.local_mkdir(local_path)
@@ -157,4 +193,6 @@ class FSDPCheckpointManager(BaseCheckpointManager):
 
         torch.distributed.barrier()
 
-        self.previous_save_local_path = local_path
+        # Only update previous_save_local_path if requested
+        if update_previous_path:
+            self.previous_save_local_path = local_path

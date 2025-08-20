@@ -16,14 +16,16 @@ Metrics related to the PPO trainer.
 """
 
 import torch
-from typing import Any, Dict, List, Callable
+from typing import Any, Dict, List, Callable, Set
 import numpy as np
 from verl import DataProto
 from collections import Counter, defaultdict
 
-
-def reduce_metrics(metrics: Dict[str, List[Any]]) -> Dict[str, Any]:
+# NOTE: DEV_ESTIMATE_ENTROPY_DELTA
+def reduce_metrics(metrics: Dict[str, List[Any]], except_keys : Set[str] = {'actor/H_t', 'actor/advantages'}) -> Dict[str, Any]:
     for key, val in metrics.items():
+        if key in except_keys:
+            continue
         metrics[key] = np.mean(val)
     return metrics
 

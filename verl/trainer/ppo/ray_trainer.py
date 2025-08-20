@@ -17,7 +17,12 @@ This trainer supports model-agonistic model initialization with huggingface
 """
 
 import os
+import shutil
+import time
 import uuid
+import pathlib
+import pickle
+
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -326,6 +331,29 @@ class RayPPOTrainer(object):
         if self.config.trainer.get('use_ref_for_generation', False):
             assert self.use_reference_policy, "Cannot use reference policy for generation if no reference policy worker is configured (Role.RefPolicy needed)."
 
+        # Initialize early stopping variables
+        # To enable early stopping, add the following to your trainer config:
+        # trainer:
+        #   early_stopping_enabled: true
+        #   early_stopping_patience: 5  # Number of validation checks without improvement
+        #   early_stopping_min_delta: 0.001  # Minimum improvement to be considered significant
+        #   save_best_checkpoint: true  # Whether to save best checkpoint based on mean eval metrics
+        self.early_stopping_enabled = getattr(self.config.trainer, 'early_stopping_enabled', False)
+        if self.early_stopping_enabled:
+            self.early_stopping_patience = getattr(self.config.trainer, 'early_stopping_patience', 10)
+            self.early_stopping_min_delta = getattr(self.config.trainer, 'early_stopping_min_delta', 0.0)
+            self.save_best_checkpoint = getattr(self.config.trainer, 'save_best_checkpoint', True)
+            
+            # Initialize tracking variables for mean of all eval metrics
+            self.best_mean_metric_value = float('-inf')  # Always maximize mean of eval metrics
+            self.best_step = 0
+            self.patience_counter = 0
+            self.early_stopped = False
+            self.best_checkpoint_path = None
+            
+            print(f"Early stopping enabled: patience={self.early_stopping_patience}, "
+                  f"min_delta={self.early_stopping_min_delta}, save_best={self.save_best_checkpoint}")
+
         self._validate_config()
         self._create_dataloader()
 
@@ -333,6 +361,20 @@ class RayPPOTrainer(object):
         config = self.config
         # number of GPUs total
         n_gpus = config.trainer.n_gpus_per_node * config.trainer.nnodes
+
+        # GRPO validation: ensure rollout.n is properly set
+        if config.algorithm.adv_estimator == AdvantageEstimator.GRPO:
+            if not hasattr(config.actor_rollout_ref.rollout, 'n') or config.actor_rollout_ref.rollout.n is None:
+                # Set default value for GRPO using open_dict to allow modification
+                with open_dict(config):
+                    config.actor_rollout_ref.rollout.n = 5
+                print(f"WARNING: rollout.n not set for GRPO. Setting default value: {config.actor_rollout_ref.rollout.n}")
+            elif config.actor_rollout_ref.rollout.n <= 1:
+                print(f"WARNING: rollout.n={config.actor_rollout_ref.rollout.n} is too small for GRPO. GRPO requires n > 1 to generate multiple responses per prompt for advantage estimation.")
+                # Set to minimum recommended value using open_dict to allow modification
+                with open_dict(config):
+                    config.actor_rollout_ref.rollout.n = 5
+                print(f"Setting rollout.n to recommended value: {config.actor_rollout_ref.rollout.n}")
 
         if not config.algorithm.filter_groups.enable:
             assert config.data.train_batch_size == config.data.gen_batch_size, \
@@ -1129,6 +1171,20 @@ class RayPPOTrainer(object):
         
     def _log_metrics_to_jsonl(self, filepath: str, step: int, metrics: dict):
         """Appends a step's metrics to a JSON Lines file."""
+        if self.config.actor_rollout_ref.actor.DEV_ESTIMATE_ENTROPY_DELTA and metrics.get('actor/H_t') is not None:
+            deltas, advs = metrics.pop('actor/H_t'), metrics.pop('actor/advantages')
+
+            print(f"LOG_METRICS, deltas: {deltas}")
+
+            path = pathlib.Path(filepath).parent / 'entropy_dumps'
+            path.mkdir(exist_ok=True)
+            with open(path / f'dump-{step}.pickle', 'wb') as file:
+                pickle.dump({
+                    'deltas' : deltas,
+                    'advantages' : advs
+                }, file)
+
+
         def convert_value(v):
             if isinstance(v, torch.Tensor):
                 return v.item() # Use .item() to get standard Python type from tensor
@@ -1147,6 +1203,140 @@ class RayPPOTrainer(object):
         except Exception as e:
             print(f"Warning: Failed to write metrics to {filepath} for step {step}. Error: {e}")
 
+    def _check_early_stopping(self, val_metrics: dict, current_step: int) -> bool:
+        """
+        Check if early stopping criteria are met based on the mean of validation benchmark metrics.
+        
+        Args:
+            val_metrics: Dictionary of validation metrics
+            current_step: Current training step
+            
+        Returns:
+            True if training should be stopped, False otherwise
+        """
+        if not self.early_stopping_enabled:
+            return False
+            
+        if not val_metrics:
+            print("Warning: No validation metrics provided for early stopping check")
+            return False
+        
+        # Calculate mean of validation benchmark mean metrics only
+        # Filter for keys that contain "val/" and "mean" but exclude "std" and exclude duplicates
+        metric_values = []
+        used_metrics = []
+        for key, value in val_metrics.items():
+            if (isinstance(value, (int, float)) and 
+                key.startswith('val/') and 
+                '/mean' in key and 
+                '/std' not in key and
+                'time' not in key.lower()):
+                metric_values.append(float(value))
+                used_metrics.append(key)
+        
+        if not metric_values:
+            print("Warning: No validation benchmark mean metrics found for early stopping")
+            print(f"Available metrics: {list(val_metrics.keys())}")
+            return False
+            
+        current_mean_metric = sum(metric_values) / len(metric_values)
+        
+        # Check if current mean metric is better than best (always maximize mean)
+        is_better = current_mean_metric > self.best_mean_metric_value + self.early_stopping_min_delta
+            
+        if is_better:
+            # New best metric found
+            self.best_mean_metric_value = current_mean_metric
+            self.best_step = current_step
+            self.patience_counter = 0
+            
+            # Save checkpoint as best if enabled
+            if self.save_best_checkpoint:
+                self._save_best_checkpoint(current_step)
+                
+            print(f"New best mean eval metric: {current_mean_metric:.6f} at step {current_step}")
+            print(f"  Based on {len(metric_values)} metrics: {used_metrics}")
+            return False
+        else:
+            # No improvement
+            self.patience_counter += 1
+            print(f"No improvement in mean eval metric for {self.patience_counter}/{self.early_stopping_patience} steps "
+                  f"(current: {current_mean_metric:.6f}, best: {self.best_mean_metric_value:.6f} at step {self.best_step})")
+            
+            if self.patience_counter >= self.early_stopping_patience:
+                print(f"Early stopping triggered! No improvement in mean eval metric "
+                      f"for {self.early_stopping_patience} validation checks.")
+                print(f"Best mean eval metric: {self.best_mean_metric_value:.6f} at step {self.best_step}")
+                
+                self.early_stopped = True
+                return True
+                
+        return False
+
+    def _save_best_checkpoint(self, step: int):
+        """Save the current model as the best checkpoint based on mean eval metrics."""
+        best_checkpoint_folder = os.path.join(self.config.trainer.default_local_dir, 'best_checkpoint')
+        
+        # Clean up previous best checkpoint if it exists
+        if os.path.exists(best_checkpoint_folder):
+            shutil.rmtree(best_checkpoint_folder)
+            print(f"Removed previous best checkpoint directory: {best_checkpoint_folder}")
+        
+        os.makedirs(best_checkpoint_folder, exist_ok=True)
+        
+        try:
+            actor_local_path = os.path.join(best_checkpoint_folder, 'actor')
+            
+            # Save actor checkpoint without updating the previous_save_local_path
+            self.actor_rollout_wg.save_checkpoint(
+                actor_local_path,
+                None,
+                step,
+                remove_previous_ckpt=False,  # Don't interfere with regular checkpoint cleanup
+                update_previous_path=False   # Don't update the checkpoint manager's tracking
+            )
+            
+            # Save critic checkpoint if using critic
+            if self.use_critic:
+                critic_local_path = os.path.join(best_checkpoint_folder, 'critic')
+                self.critic_wg.save_checkpoint(
+                    critic_local_path,
+                    None,
+                    step,
+                    remove_previous_ckpt=False,  # Don't interfere with regular checkpoint cleanup
+                    update_previous_path=False   # Don't update the checkpoint manager's tracking
+                )
+            
+            # Save metadata about the best checkpoint
+            metadata = {
+                'step': step,
+                'mean_eval_metric': self.best_mean_metric_value,
+                'timestamp': time.time(),
+                'early_stopping_enabled': self.early_stopping_enabled,
+                'patience': self.early_stopping_patience,
+                'min_delta': self.early_stopping_min_delta
+            }
+            
+            metadata_path = os.path.join(best_checkpoint_folder, 'best_metadata.json')
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+                
+            # Also save dataloader state for complete restoration if needed
+            dataloader_local_path = os.path.join(best_checkpoint_folder, 'data.pt')
+            try:
+                dataloader_state_dict = self.train_dataloader.state_dict()
+                torch.save(dataloader_state_dict, dataloader_local_path)
+            except Exception as e:
+                print(f"Warning: Could not save dataloader state for best checkpoint: {e}")
+                
+            self.best_checkpoint_path = best_checkpoint_folder
+            print(f"Saved best checkpoint at step {step} with mean eval metric={self.best_mean_metric_value:.6f}")
+            
+        except Exception as e:
+            print(f"Error saving best checkpoint: {e}")
+            # Don't fail training if checkpoint saving fails
+            import traceback
+            traceback.print_exc()
 
     def fit(self):
         """
@@ -1155,7 +1345,6 @@ class RayPPOTrainer(object):
         The light-weight advantage computation is done on the driver process.
         """
         from verl.utils.tracking import Tracking
-        from omegaconf import OmegaConf
         import json # Added import for json
         from verl.utils import hdfs_io # Added import for hdfs_io
 
@@ -1259,6 +1448,31 @@ class RayPPOTrainer(object):
                 # Log initial metrics to jsonl
                 if val_metrics: # Ensure metrics are not empty
                     self._log_metrics_to_jsonl(eval_log_path, initial_val_log_step, val_metrics)
+                
+                # Initialize early stopping with initial validation metrics
+                if self.early_stopping_enabled and val_metrics:
+                    # Calculate mean of validation benchmark mean metrics for initialization
+                    metric_values = []
+                    used_metrics = []
+                    for key, value in val_metrics.items():
+                        if (isinstance(value, (int, float)) and 
+                            key.startswith('val/') and 
+                            '/mean' in key and 
+                            '/std' not in key and
+                            'time' not in key.lower()):
+                            metric_values.append(float(value))
+                            used_metrics.append(key)
+                    
+                    if metric_values:
+                        initial_mean_metric = sum(metric_values) / len(metric_values)
+                        self.best_mean_metric_value = initial_mean_metric
+                        self.best_step = initial_val_log_step
+                        print(f"Initialized early stopping with mean eval metric={initial_mean_metric:.6f} at step {initial_val_log_step}")
+                        print(f"  Based on {len(metric_values)} metrics: {used_metrics}")
+                        
+                        # Save initial checkpoint as best if enabled
+                        if self.save_best_checkpoint:
+                            self._save_best_checkpoint(initial_val_log_step)
 
             if self.advantage_tracking_enabled:
                 #step_init = self.config.trainer.get('step_init', -1)
@@ -1484,6 +1698,7 @@ class RayPPOTrainer(object):
                         with _timer('update_actor', timing_raw):
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
+                        
                         # actor_output_metrics already contains 'perf/mfu/actor' and potentially raw FLOPs counts
                         # if added in the worker. Let's ensure we log everything it returns.
                         metrics.update(actor_output_metrics)
@@ -1509,6 +1724,13 @@ class RayPPOTrainer(object):
                         if val_metrics: # Ensure metrics are not empty
                             self._log_metrics_to_jsonl(eval_log_path, current_periodic_val_log_step, val_metrics)
                             logger.log(data=val_metrics, step=current_periodic_val_log_step) # also log to wandb etc.
+                        
+                        # Check early stopping criteria
+                        if self.early_stopping_enabled and val_metrics and not is_last_step:
+                            should_stop = self._check_early_stopping(val_metrics, current_periodic_val_log_step)
+                            if should_stop:
+                                print("Early stopping triggered, ending training...")
+                                return
 
                     if self.config.trainer.save_freq > 0 and ( is_last_step or \
                             self.global_steps % self.config.trainer.save_freq == 0):
@@ -1539,6 +1761,12 @@ class RayPPOTrainer(object):
 
                 if is_last_step:
                     pprint(f'Final validation metrics: {last_val_metrics}')
+                    if self.early_stopping_enabled and not self.early_stopped:
+                        print("Training completed normally (no early stopping triggered)")
                     return
 
                 self.global_steps += 1
+        
+        # Training completed after reaching total_training_steps
+        if self.early_stopping_enabled and not self.early_stopped:
+            print("Training completed normally after reaching total_training_steps")
