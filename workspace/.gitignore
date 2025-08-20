@@ -1,0 +1,4 @@
+# ignore all .json temporary stores
+*.json
+*.pickle
+*.pt
