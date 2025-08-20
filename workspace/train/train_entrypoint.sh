@@ -1,9 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=verl-train2                               # Descriptive job name
+#SBATCH --job-name=verl-train2                              # Descriptive job name
 #SBATCH --output=/u/rfechner/jobs/slurm_train2_%j.out   # Standard output file (%j expands to job ID)
 #SBATCH --error=/u/rfechner/jobs/slurm_train2_%j.err    # Standard error file (%j expands to job ID)
 #SBATCH --nodes=2
-#SBATCH --exclusive
+#SBATCH --exclusive             
+#SBATCH --partition=general                                 # main partition containing GPU nodes
+#SBATCH --constraint=gpu-bw                                 # high bandwidth GPUs within general partition  
+#SBATCH --switches=1                                        # constraint on the topology -> we want adjacent nodes
 #SBATCH --ntasks-per-node=1                                 # Run the shell script as a single task on this node
 #SBATCH --cpus-per-task=72                                  # Allocate all CPUs on the node (Raven GPU nodes often have 72 cores, adjust if different)
 #SBATCH --gres=gpu:a100:4                                   
@@ -21,7 +24,7 @@ echo "Allocated GPUs: $SLURM_JOB_GPUS"
 echo "========================================================"
 
 # Check for required environment variables
-required_vars=("TRAIN_FILES" "MODEL_PATH" "ENTROPY_COEF" "KL_LOSS_COEF" "PROJECT_NAME")
+required_vars=("TRAIN_FILES" "MODEL_PATH" "ENTROPY_COEF" "KL_LOSS_COEF" "PROJECT_NAME" "DATA_SEED")
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
         echo "ERROR: $var is not set. Please export it before running this script."
@@ -29,21 +32,37 @@ for var in "${required_vars[@]}"; do
     fi
 done
 
+# Handle optional variables
+if [ -z "${TIMESTAMP}" ]; then
+    echo "ERROR: TIMESTAMP is not set. Please export it before running this script."
+    exit 1
+fi
+
+if [ -z "${IDENTIFIER}" ]; then
+    # IDENTIFIER is unset or empty
+    IDENTIFIER=""
+fi
+
 # Set fixed values and defaults
 LEARNING_RATE=1e-6
-TOTAL_EPOCHS=20
-TRAIN_BATCH_SIZE=512  # Reduced from 1024 to avoid OOM
+TOTAL_EPOCHS=10
+TRAIN_BATCH_SIZE=512
 MAX_PROMPT_LENGTH=1024
-MAX_RESPONSE_LENGTH=2048  # Reduced from 3072 to save memory
+MAX_RESPONSE_LENGTH=1024
 SAVE_FREQ=5
 TEST_FREQ=2
 NNODES=${SLURM_JOB_NUM_NODES:-2}  # Use dynamic node detection from SLURM
 
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/u/rfechner"}  # Base directory for data and checkpoints
-timestamp=$(date +"%Y%m%d_%H%M%S")  # Timestamp for unique checkpointing
-EXPNAME="${MODEL_PATH}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}_${timestamp}"
+# Use timestamp passed from environment variable
+# Build experiment name with optional identifier
+if [ -n "${IDENTIFIER}" ]; then
+    EXPNAME="${MODEL_PATH}_${IDENTIFIER}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}_${TIMESTAMP}"
+else
+    EXPNAME="${MODEL_PATH}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}_${TIMESTAMP}"
+fi
 CHECKPOINT_DIR="${RAY_DATA_HOME}/out/${PROJECT_NAME}/${EXPNAME}"  # Checkpoint directory
-VAL_FILES=[data/math500/test.parquet,data/aime25/test.parquet,data/minervamath/test.parquet,data/olympiadbench/test.parquet]
+VAL_FILES=[data/math500/test.parquet]
 
 echo "Configuration:"
 echo "  Train files: $TRAIN_FILES"
@@ -55,6 +74,11 @@ echo "  KL loss coefficient: $KL_LOSS_COEF"
 echo "  Total epochs: $TOTAL_EPOCHS (fixed)"
 echo "  Project name: $PROJECT_NAME"
 echo "  Nodes: $NNODES (fixed)"
+echo "  Timestamp: $TIMESTAMP"
+echo "  Data seed: $DATA_SEED"
+if [ -n "${IDENTIFIER}" ]; then
+    echo "  Identifier: $IDENTIFIER"
+fi
 echo "========================================================"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -81,6 +105,9 @@ unset __conda_setup
 
 # Set PyTorch memory management for better fragmentation handling
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
+# VLLM-specific environment variables for stability
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
 
 # Network Settings for Multi-Node Training (NCCL configuration)
 export NCCL_DEBUG=${NCCL_DEBUG:-"INFO"}
@@ -154,6 +181,9 @@ echo "Ray cluster should be ready, testing connection..."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3) Start Training
+# Used most tips from: https://verl.readthedocs.io/en/latest/perf/perf_tuning.html
+# however, they point to features added with recent verl updates. We're working with an
+# old verl version.
 # ─────────────────────────────────────────────────────────────────────────────
 
 python -u -m verl.trainer.main_ppo \
@@ -164,32 +194,26 @@ python -u -m verl.trainer.main_ppo \
         data.max_prompt_length=$MAX_PROMPT_LENGTH \
         data.max_response_length=$MAX_RESPONSE_LENGTH \
         data.truncation=left \
-        actor_rollout_ref.model.use_remove_padding=True \
-        actor_rollout_ref.actor.use_dynamic_bsz=True \
+        +data.seed=$DATA_SEED \ 
+        actor_rollout_ref.model.use_remove_padding=False \
         actor_rollout_ref.model.path=$MODEL_PATH \
-        +actor_rollout_ref.model.override_config.attention_dropout=0. \
-        +actor_rollout_ref.model.override_config.embd_pdrop=0. \
-        +actor_rollout_ref.model.override_config.resid_pdrop=0. \
-        actor_rollout_ref.model.enable_gradient_checkpointing=True \
+        +actor_rollout_ref.model.DEV_ESTIMATE_ENTROPY_DELTA=False \
         actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-        actor_rollout_ref.actor.ppo_mini_batch_size=32 \
-        actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2 \
+        actor_rollout_ref.actor.use_dynamic_bsz=True \
+        actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((4 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
+        actor_rollout_ref.actor.log_prob_max_token_len_per_gpu=$((8 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.actor.use_kl_loss=True \
         actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
         actor_rollout_ref.actor.entropy_coeff=$ENTROPY_COEF \
-        actor_rollout_ref.actor.grad_clip=1.0 \
-        actor_rollout_ref.actor.kl_loss_type=low_var_kl \
-        actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=4 \
-        actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-        actor_rollout_ref.rollout.gpu_memory_utilization=0.65 \
-        actor_rollout_ref.rollout.enable_chunked_prefill=True \
-        actor_rollout_ref.rollout.max_num_batched_tokens=$((MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH)) \
         actor_rollout_ref.actor.fsdp_config.param_offload=True \
         actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
+        actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
+        actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+        actor_rollout_ref.rollout.enable_chunked_prefill=True \
+        actor_rollout_ref.rollout.max_num_batched_tokens=$((6 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
+        actor_rollout_ref.rollout.n=8 \
+        actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=$((8 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.ref.fsdp_config.param_offload=True \
-        +actor_rollout_ref.ref.ppo_mini_batch_size=32 \
-        +actor_rollout_ref.ref.ppo_micro_batch_size_per_gpu=2 \
-        +actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=4 \
         +algorithm.use_kl_in_reward=False \
         trainer.default_local_dir="${CHECKPOINT_DIR}" \
         trainer.project_name="$PROJECT_NAME" \
@@ -200,10 +224,13 @@ python -u -m verl.trainer.main_ppo \
         trainer.save_freq=$SAVE_FREQ \
         trainer.test_freq=$TEST_FREQ \
         trainer.default_local_dir="${CHECKPOINT_DIR}" \
-        trainer.resume_mode=auto \
-        trainer.resume_from_path=False \
         trainer.remove_previous_ckpt_in_save=True \
-        trainer.total_epochs=$TOTAL_EPOCHS 2>&1 | tee "${PROJECT_NAME}_training.log"
+        trainer.total_epochs=$TOTAL_EPOCHS \
+        +trainer.early_stopping_enabled=True \
+        +trainer.early_stopping_patience=20 \
+        +trainer.early_stopping_min_delta=0.001 \
+        +trainer.save_best_checkpoint=True
+        
 
 echo "========================================================"
 echo "Training completed with exit code: $?"

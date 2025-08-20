@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 def find_parquet_parts(directory):
-    """Find all parquet-partX files and return list of (filepath, X) tuples."""
+    """Find all parquet-partX files and .parquet files and return list of filepaths."""
     parquet_files = []
-    pattern = re.compile(r".*\.parquet-part\d+$")
+    pattern = re.compile(r".*\.parquet(-part\d+)?$")
 
     for root, _, files in os.walk(directory):
         for file in files:

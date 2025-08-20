@@ -88,6 +88,11 @@ if [ -z "${IDENTIFIER}" ]; then
     IDENTIFIER=""
 fi
 
+if [ -z "${PROJECT_DIR}" ]; then
+    # PROJECT_DIR is unset or empty, use default
+    PROJECT_DIR="rollouts"
+fi
+
 # =====================
 # 1. Project, Experiment, and Paths
 # =====================
@@ -95,7 +100,6 @@ fi
 # Set PyTorch memory management for better fragmentation handling
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-project_name='rollouts'  # Name of the project
 RAY_DATA_HOME=${RAY_DATA_HOME:-"/u/rfechner"}  # Base directory for data and checkpoints
 
 # Use timestamp passed from environment variable
@@ -105,7 +109,7 @@ if [ -n "${IDENTIFIER}" ]; then
 else
     EXPERIMENT_NAME="${MODEL_PATH}_${DATASET_NAME}_nrollouts_${ROLLOUTS}_${TIMESTAMP}/chunk${SLURM_IDX}"
 fi
-CHECKPOINTS_DIR="${RAY_DATA_HOME}/out/${project_name}/${EXPERIMENT_NAME}"  # Checkpoint directory
+CHECKPOINTS_DIR="${RAY_DATA_HOME}/out/${PROJECT_DIR}/${EXPERIMENT_NAME}"  # Checkpoint directory
 FILE="${RAY_DATA_HOME}/data/${DATASET_PATH}"
 
 # =====================
@@ -171,25 +175,25 @@ echo "Ray cluster should be ready, testing connection..."
 # 3. Model and Generation Settings
 # =====================
 max_prompt_length=1024  # Maximum prompt length
-max_response_length=2048  # Reduced from 3072 to save memory (like in train script)
+max_response_length=1536  # Further reduced to save memory
 val_top_k=-1  # Top-k for validation generation
-val_temperature=0.6  # Temperature for validation generation
+val_temperature=1.0  # Temperature for validation generation
 
 # =====================
 # 4. Run Generation on 2-node Ray cluster
 # =====================
 
-python3 -m verl.trainer.main_generation \
+python -u -m verl.trainer.main_generation \
     trainer.nnodes=2 \
     trainer.n_gpus_per_node=4 \
     data.path="${FILE}" \
     data.output_path="${CHECKPOINTS_DIR}/results.parquet" \
     data.n_samples=${ROLLOUTS} \
-    data.batch_size=12 \
+    data.batch_size=32 \
     +data.compute_scores=True \
     +data.CHUNK_SIZE=${CHUNK_SIZE} \
     +data.SLURM_IDX=${SLURM_IDX} \
-    +data.dump_parts=True \
+    +data.dump_parts=False \
     model.path=${MODEL_PATH} \
     +model.checkpoint=${CHECKPOINT} \
     rollout.response_length=${max_response_length} \
@@ -197,10 +201,10 @@ python3 -m verl.trainer.main_generation \
     rollout.top_k=${val_top_k} \
     rollout.prompt_length=${max_prompt_length} \
     rollout.response_length=${max_response_length} \
-    rollout.tensor_model_parallel_size=2 \
-    rollout.gpu_memory_utilization=0.65 \
+    rollout.tensor_model_parallel_size=${TENSOR_PARALLEL_SIZE:-4} \
+    rollout.gpu_memory_utilization=0.5 \
     rollout.enable_chunked_prefill=True \
-    rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
+    rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length))
 
 echo "========================================================"
 echo "Script execution finished with exit code: $?"
