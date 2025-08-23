@@ -2,8 +2,8 @@
 # Manual training script used to run on interactive nodes.
 # Set fixed values and defaults
 LEARNING_RATE=1e-6
-TOTAL_EPOCHS=2
-TRAIN_BATCH_SIZE=128
+TOTAL_EPOCHS=20
+TRAIN_BATCH_SIZE=512
 MAX_PROMPT_LENGTH=1024
 MAX_RESPONSE_LENGTH=512
 SAVE_FREQ=5
@@ -14,11 +14,12 @@ ENTROPY_COEF=0.0
 KL_LOSS_COEF=0.0
 MODEL_PATH="Qwen/Qwen2.5-1.5B"
 PROJECT_NAME="entropy_logging"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 DATA_SEED=42
 
-EXPNAME="${MODEL_PATH}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}"
+EXPNAME="SUBSET_${MODEL_PATH}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}_${TIMESTAMP}"
 CHECKPOINT_DIR="${RAY_DATA_HOME}/out/${PROJECT_NAME}/${EXPNAME}"  # Checkpoint directory
-TRAIN_FILES="data/math/train.parquet"
+TRAIN_FILES="data/math/train_subset_512.parquet"
 VAL_FILES="data/math500/test.parquet"
 
 echo "Configuration:"
@@ -75,7 +76,7 @@ conda activate verl
 # 2) Start Training
 # ─────────────────────────────────────────────────────────────────────────────
 echo "Starting training..."
-
+echo "WARNING: USING SUBSET FOR TRAINING"
 python -u -m verl.trainer.main_ppo \
         algorithm.adv_estimator=grpo \
         data.train_files="$TRAIN_FILES" \
@@ -101,7 +102,7 @@ python -u -m verl.trainer.main_ppo \
         actor_rollout_ref.rollout.gpu_memory_utilization=0.3 \
         actor_rollout_ref.rollout.enable_chunked_prefill=True \
         actor_rollout_ref.rollout.max_num_batched_tokens=$((6 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
-        actor_rollout_ref.rollout.n=4 \
+        actor_rollout_ref.rollout.n=8 \
         actor_rollout_ref.ref.fsdp_config.param_offload=True \
         actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=$((2 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         +algorithm.use_kl_in_reward=False \

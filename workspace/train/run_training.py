@@ -3,7 +3,8 @@ import subprocess
 import argparse
 from datetime import datetime
 
-def main(model: str, entropy_coef: float, kl_loss_coef: float, project_name: str, nodes: int, identifier: str = None, seed: int = 42):
+def main(model: str, entropy_coef: float, kl_loss_coef: float, project_name: str, nodes: int, identifier: str = None, seed: int = 42, 
+         mask_positive_entropy_change: bool = False, mask_negative_entropy_change: bool = False):
     """
     Launch a SLURM training job with the specified parameters.
     """
@@ -51,7 +52,9 @@ def main(model: str, entropy_coef: float, kl_loss_coef: float, project_name: str
         f"PROJECT_NAME={project_name}",
         f"TIMESTAMP={timestamp}",
         f"IDENTIFIER={identifier if identifier else ''}",
-        f"DATA_SEED={seed}"
+        f"DATA_SEED={seed}",
+        f"MASK_POSITIVE_ENTROPY_CHANGE={'1' if mask_positive_entropy_change else '0'}",
+        f"MASK_NEGATIVE_ENTROPY_CHANGE={'1' if mask_negative_entropy_change else '0'}"
     ]
 
     sbatch_cmd = [
@@ -120,12 +123,16 @@ if __name__ == "__main__":
     # Random seed for reproducibility
     parser.add_argument("--seed", type=int, default=42,
                        help="Random seed for data shuffling and reproducibility (default: 42).")
-
+    # Entropy change options
+    parser.add_argument("--mask-pos", action="store_true", default=False,
+                       help="Enable positive entropy change masking (default: False).")
+    parser.add_argument("--mask-neg", action="store_true", default=False,
+                       help="Enable negative entropy change masking (default: False).")
     args = parser.parse_args()
 
     # Change to home directory for consistent paths
     os.chdir(os.getenv("HOME"))
-    
+    print('WARNING CURRENTLY RUNNING IN DEV MODE -> ENTROPY DELTA ANALYSIS')
     main(
         model=args.model,
         entropy_coef=args.entropy_coef,
@@ -133,5 +140,7 @@ if __name__ == "__main__":
         project_name=args.project_name,
         nodes=args.nodes,
         identifier=args.identifier,
-        seed=args.seed
+        seed=args.seed,
+        mask_positive_entropy_change=args.mask_pos,
+        mask_negative_entropy_change=args.mask_neg
     )

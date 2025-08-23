@@ -104,14 +104,7 @@ def clip_by_value(x, tensor_min, tensor_max):
 
 
 def entropy_from_logits(logits: torch.Tensor):
-    """Calculate entropy from logits.
-        TODO: This copies the logits, which are quite large ~48GB over 4GPUs = 12.17GiB per GPU.
-        We're just trying to get the entropy and do currently not care about keeping tracks of gradients.
-        Could we instead unroll this operation to reduce peak memory consumption?
-
-        Recipe: iterate over sequence length axis:
-            chunksize 64, compute the statistics, then allocate into a list.
-    """
+    """Calculate entropy from logits."""
     CHUNKSIZE=64
     entropy_accu = []
 

@@ -48,7 +48,7 @@ LEARNING_RATE=1e-6
 TOTAL_EPOCHS=10
 TRAIN_BATCH_SIZE=512
 MAX_PROMPT_LENGTH=1024
-MAX_RESPONSE_LENGTH=1024
+MAX_RESPONSE_LENGTH=768
 SAVE_FREQ=5
 TEST_FREQ=2
 NNODES=${SLURM_JOB_NUM_NODES:-2}  # Use dynamic node detection from SLURM
@@ -61,6 +61,7 @@ if [ -n "${IDENTIFIER}" ]; then
 else
     EXPNAME="${MODEL_PATH}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}_${TIMESTAMP}"
 fi
+
 CHECKPOINT_DIR="${RAY_DATA_HOME}/out/${PROJECT_NAME}/${EXPNAME}"  # Checkpoint directory
 VAL_FILES=[data/math500/test.parquet]
 
@@ -194,25 +195,27 @@ python -u -m verl.trainer.main_ppo \
         data.max_prompt_length=$MAX_PROMPT_LENGTH \
         data.max_response_length=$MAX_RESPONSE_LENGTH \
         data.truncation=left \
-        +data.seed=$DATA_SEED \ 
+        +data.seed=$DATA_SEED \
         actor_rollout_ref.model.use_remove_padding=False \
         actor_rollout_ref.model.path=$MODEL_PATH \
-        +actor_rollout_ref.model.DEV_ESTIMATE_ENTROPY_DELTA=False \
+        +actor_rollout_ref.model.DEV_ESTIMATE_ENTROPY_DELTA=True \
+        +actor_rollout_ref.model.mask_positive_entropy_change=${MASK_POSITIVE_ENTROPY_CHANGE} \
+        +actor_rollout_ref.model.mask_negative_entropy_change=${MASK_NEGATIVE_ENTROPY_CHANGE} \
         actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
         actor_rollout_ref.actor.use_dynamic_bsz=True \
-        actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((4 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
-        actor_rollout_ref.actor.log_prob_max_token_len_per_gpu=$((8 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
-        actor_rollout_ref.actor.use_kl_loss=True \
+        actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((2 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
+        actor_rollout_ref.actor.log_prob_max_token_len_per_gpu=$((1 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
+        actor_rollout_ref.actor.use_kl_loss=$([ "$KL_LOSS_COEF" -gt 0 ] && echo True || echo False) \
         actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
         actor_rollout_ref.actor.entropy_coeff=$ENTROPY_COEF \
         actor_rollout_ref.actor.fsdp_config.param_offload=True \
         actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-        actor_rollout_ref.rollout.tensor_model_parallel_size=2 \
-        actor_rollout_ref.rollout.gpu_memory_utilization=0.6 \
+        actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
+        actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
         actor_rollout_ref.rollout.enable_chunked_prefill=True \
         actor_rollout_ref.rollout.max_num_batched_tokens=$((6 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.rollout.n=8 \
-        actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=$((8 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
+        actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=$((1 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.ref.fsdp_config.param_offload=True \
         +algorithm.use_kl_in_reward=False \
         trainer.default_local_dir="${CHECKPOINT_DIR}" \
