@@ -176,7 +176,32 @@ def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, 
     return data, metrics
 
 
-def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1):
+def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1, randomize_zero_reward_groups=False):
+
+    if randomize_zero_reward_groups:
+        # reward_tensor: (batch_size, response_length)
+        reward_tensor = data.batch['token_level_rewards']
+        # index: group id for each sample (batch_size,)
+        index = data.non_tensor_batch['uid'] if 'uid' in data.non_tensor_batch else None
+        if index is None:
+            raise ValueError("'uid' must be present in non_tensor_batch to group samples.")
+        # Convert to numpy for grouping
+        index_np = np.array(index)
+        scores = reward_tensor.sum(dim=-1).cpu().numpy()  # (batch_size,)
+        # Find unique groups
+        unique_groups = np.unique(index_np)
+        for group in unique_groups:
+            group_mask = (index_np == group)
+            group_scores = scores[group_mask]
+            group_std = group_scores.std()
+            if np.isclose(group_std, 0.0):
+                # Randomize: assign each entry in group either 0 or 0.1 reward
+                n = group_mask.sum()
+                randomized = np.random.randint(0, 2, size=n) * 0.1
+                # Set all tokens in the response to the same value (broadcast to response_length)
+                reward_tensor[group_mask] = torch.tensor(randomized, dtype=reward_tensor.dtype, device=reward_tensor.device).unsqueeze(1).expand(-1, reward_tensor.shape[1])
+        data.batch['token_level_rewards'] = reward_tensor
+
     # prepare response group
     # TODO: add other ways to estimate advantages
     if adv_estimator == AdvantageEstimator.GAE:
@@ -356,6 +381,13 @@ class RayPPOTrainer(object):
 
         self._validate_config()
         self._create_dataloader()
+
+        # For the entropy change prediction, we need the logits. Cannot use sequence packing.
+        self.entropy_change_condition =  \
+            self.config.actor_rollout_ref.actor.get('mask_negative_entropy_change', False) | \
+            self.config.actor_rollout_ref.actor.get('mask_positive_entropy_change', False) | \
+            self.config.actor_rollout_ref.actor.get('adaptive_scale_by_entropy_change', False)
+
 
     def _validate_config(self):
         config = self.config
@@ -1172,11 +1204,8 @@ class RayPPOTrainer(object):
         
     def _log_metrics_to_jsonl(self, filepath: str, step: int, metrics: dict):
         """Appends a step's metrics to a JSON Lines file."""
-        if self.config.actor_rollout_ref.actor.DEV_ESTIMATE_ENTROPY_DELTA and metrics.get('actor/H_t') is not None:
+        if self.entropy_change_condition and metrics.get('actor/H_t') is not None:
             deltas, advs = metrics.pop('actor/H_t'), metrics.pop('actor/advantages')
-
-            print(f"LOG_METRICS, deltas: {deltas}")
-
             path = pathlib.Path(filepath).parent / 'entropy_dumps'
             path.mkdir(exist_ok=True)
             with open(path / f'dump-{step}.pickle', 'wb') as file:
@@ -1349,6 +1378,8 @@ class RayPPOTrainer(object):
         import json # Added import for json
         from verl.utils import hdfs_io # Added import for hdfs_io
 
+        print(f'[INFO] world_size: {self.actor_rollout_wg.world_size}')
+
         # Save config before initializing tracking
         base_save_dir = self.config.trainer.default_local_dir
         os.makedirs(base_save_dir, exist_ok=True)
@@ -1502,6 +1533,19 @@ class RayPPOTrainer(object):
                 timing_raw = {}
 
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
+                batch.meta_info['total_steps'] = self.total_training_steps
+                
+                if self.config.trainer.get('advantage_schedule') == 'linear':
+                    batch.meta_info['advantage_schedule'] = np.linspace(1, 0, self.total_training_steps)
+                elif self.config.trainer.get('advantage_schedule') == 'linear_to_balanced':
+                    batch.meta_info['advantage_schedule'] = \
+                        np.concatenate([
+                            np.linspace(1, 0.5, self.total_training_steps // 2)[:, None],
+                            np.full((self.total_training_steps - (self.total_training_steps // 2), 1), fill_value=0.5)
+                        ]).squeeze()
+                elif self.config.trainer.get('advantage_schedule') == 'balanced':
+                    batch.meta_info['advantage_schedule'] = \
+                        np.full(self.total_training_steps, fill_value=0.5)
 
                 # pop those keys for generation
                 if 'multi_modal_inputs' in batch.non_tensor_batch.keys():
@@ -1697,7 +1741,10 @@ class RayPPOTrainer(object):
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
                         with _timer('update_actor', timing_raw):
+                            # have to append the current step to the metadata.
+                            batch.meta_info['global_steps'] = self.global_steps
                             actor_output = self.actor_rollout_wg.update_actor(batch)
+
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         
                         # actor_output_metrics already contains 'perf/mfu/actor' and potentially raw FLOPs counts

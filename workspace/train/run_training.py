@@ -2,9 +2,21 @@ import os
 import subprocess
 import argparse
 from datetime import datetime
+from typing import *
 
-def main(model: str, entropy_coef: float, kl_loss_coef: float, project_name: str, nodes: int, identifier: str = None, seed: int = 42, 
-         mask_positive_entropy_change: bool = False, mask_negative_entropy_change: bool = False):
+def main(model: str, 
+         entropy_coef: float, 
+         kl_loss_coef: float, 
+         project_name: str, 
+         nodes: int, 
+         identifier: str = None, 
+         seed: int = 42, 
+         mask_positive_entropy_change: bool = False, 
+         mask_negative_entropy_change: bool = False,
+         advantage_schedule : Union[None, str] = None,
+         randomize_zero_std_groups : bool = False,
+         grpo_group_size : int = 8,
+         tp_size : int = 4):
     """
     Launch a SLURM training job with the specified parameters.
     """
@@ -16,6 +28,12 @@ def main(model: str, entropy_coef: float, kl_loss_coef: float, project_name: str
     
     if not os.path.isfile(abs_train_files):
         raise FileNotFoundError(f"Training dataset file not found: {abs_train_files}")
+    
+    if (advantage_schedule and mask_negative_entropy_change) or \
+        (advantage_schedule and mask_positive_entropy_change):
+        raise ValueError("Cannot scale advantage AND mask advantages in the same run. Parameterization error.")
+    if mask_positive_entropy_change and mask_negative_entropy_change:
+        raise ValueError("Cannot mask positive and negative entropy change at the same time. Parameterization error.")
     
     # Generate timestamp for consistent naming
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -45,6 +63,7 @@ def main(model: str, entropy_coef: float, kl_loss_coef: float, project_name: str
         raise ValueError(f"Unsupported number of nodes: {nodes}. Only 2 and 4 nodes are supported.")
 
     export_vars = [
+        f"TENSOR_PARALLEL_SIZE={tp_size}",
         f"TRAIN_FILES={abs_train_files}",
         f"MODEL_PATH={model}",
         f"ENTROPY_COEF={entropy_coef}",
@@ -54,7 +73,11 @@ def main(model: str, entropy_coef: float, kl_loss_coef: float, project_name: str
         f"IDENTIFIER={identifier if identifier else ''}",
         f"DATA_SEED={seed}",
         f"MASK_POSITIVE_ENTROPY_CHANGE={'1' if mask_positive_entropy_change else '0'}",
-        f"MASK_NEGATIVE_ENTROPY_CHANGE={'1' if mask_negative_entropy_change else '0'}"
+        f"MASK_NEGATIVE_ENTROPY_CHANGE={'1' if mask_negative_entropy_change else '0'}",
+        f"SCALE_ADVANTAGE_BY_ENTROPY_CHANGE={'1' if advantage_schedule else '0'}",
+        f"ADVANTAGE_SCHEDULE={advantage_schedule}",
+        f"RANDOMIZE_ZERO_STD_GROUPS={'1' if randomize_zero_std_groups else '0'}",
+        f"GRPO_GROUP_SIZE={grpo_group_size}"
     ]
 
     sbatch_cmd = [
@@ -128,6 +151,15 @@ if __name__ == "__main__":
                        help="Enable positive entropy change masking (default: False).")
     parser.add_argument("--mask-neg", action="store_true", default=False,
                        help="Enable negative entropy change masking (default: False).")
+    parser.add_argument("--adv-schedule", type=str, default=None, choices=['linear', 'linear_to_balanced', 'balanced'],
+                       help="Advantage scheduling based on predicted entropy change.")
+    parser.add_argument("--rnd", action="store_true", default=False,
+                       help="Whether to assign random rewards to all-zero or all-one reward groups.")
+    parser.add_argument("--tp", type=int, default=4,
+                       help="Tensor parallel size. Number of GPUs to split the model into. Increasing this number will reduce Maximum GPU memory utilization but slow down training.")
+    parser.add_argument("--n", type=int, default=8,
+                       help="GRPO group size. Increases peak memory consumption drastically.")
+    
     args = parser.parse_args()
 
     # Change to home directory for consistent paths
@@ -142,5 +174,9 @@ if __name__ == "__main__":
         identifier=args.identifier,
         seed=args.seed,
         mask_positive_entropy_change=args.mask_pos,
-        mask_negative_entropy_change=args.mask_neg
+        mask_negative_entropy_change=args.mask_neg,
+        advantage_schedule=args.adv_schedule,
+        randomize_zero_std_groups=args.rnd,
+        grpo_group_size=args.n,
+        tp_size=args.tp
     )

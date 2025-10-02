@@ -24,7 +24,7 @@ echo "Allocated GPUs: $SLURM_JOB_GPUS"
 echo "========================================================"
 
 # Check for required environment variables
-required_vars=("TRAIN_FILES" "MODEL_PATH" "ENTROPY_COEF" "KL_LOSS_COEF" "PROJECT_NAME" "DATA_SEED")
+required_vars=("GRPO_GROUP_SIZE" "TRAIN_FILES" "MODEL_PATH" "ENTROPY_COEF" "KL_LOSS_COEF" "PROJECT_NAME" "DATA_SEED" "TENSOR_PARALLEL_SIZE")
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
         echo "ERROR: $var is not set. Please export it before running this script."
@@ -77,6 +77,15 @@ echo "  Project name: $PROJECT_NAME"
 echo "  Nodes: $NNODES (fixed)"
 echo "  Timestamp: $TIMESTAMP"
 echo "  Data seed: $DATA_SEED"
+echo "  Model Tensor Parallelism: $TENSOR_PARALLEL_SIZE"
+echo "  GRPO group size: $GRPO_GROUP_SIZE"
+
+echo "  ---- FLAGS ----"
+echo "  RANDOMIZE_ZERO_STD_GROUPS: $RANDOMIZE_ZERO_STD_GROUPS"
+echo "  ADVANTAGE_SCHEDULE: $ADVANTAGE_SCHEDULE"
+echo "  MASK_POSITIVE_ENTROPY_CHANGE: $MASK_POSITIVE_ENTROPY_CHANGE"
+echo "  MASK_NEGATIVE_ENTROPY_CHANGE: $MASK_NEGATIVE_ENTROPY_CHANGE"
+
 if [ -n "${IDENTIFIER}" ]; then
     echo "  Identifier: $IDENTIFIER"
 fi
@@ -196,25 +205,27 @@ python -u -m verl.trainer.main_ppo \
         data.max_response_length=$MAX_RESPONSE_LENGTH \
         data.truncation=left \
         +data.seed=$DATA_SEED \
-        actor_rollout_ref.model.use_remove_padding=False \
+        actor_rollout_ref.model.use_remove_padding=True \
         actor_rollout_ref.model.path=$MODEL_PATH \
-        +actor_rollout_ref.model.DEV_ESTIMATE_ENTROPY_DELTA=True \
-        +actor_rollout_ref.model.mask_positive_entropy_change=${MASK_POSITIVE_ENTROPY_CHANGE} \
-        +actor_rollout_ref.model.mask_negative_entropy_change=${MASK_NEGATIVE_ENTROPY_CHANGE} \
+        +actor_rollout_ref.actor.adaptive_scale_by_entropy_change=${SCALE_ADVANTAGE_BY_ENTROPY_CHANGE} \
+        +actor_rollout_ref.actor.mask_positive_entropy_change=${MASK_POSITIVE_ENTROPY_CHANGE} \
+        +actor_rollout_ref.actor.mask_negative_entropy_change=${MASK_NEGATIVE_ENTROPY_CHANGE} \
+        +trainer.randomize_zero_std_groups=${RANDOMIZE_ZERO_STD_GROUPS} \
+        +trainer.advantage_schedule=${ADVANTAGE_SCHEDULE} \
         actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
         actor_rollout_ref.actor.use_dynamic_bsz=True \
-        actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((2 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
-        actor_rollout_ref.actor.log_prob_max_token_len_per_gpu=$((1 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
-        actor_rollout_ref.actor.use_kl_loss=$([ "$KL_LOSS_COEF" -gt 0 ] && echo True || echo False) \
+        actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((1 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
+        +actor_rollout_ref.actor.log_prob_max_token_len_per_gpu=$((2 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
+        actor_rollout_ref.actor.use_kl_loss=$([ "$KL_LOSS_COEF" -gt 0 ] && echo True || echo False) \
         actor_rollout_ref.actor.entropy_coeff=$ENTROPY_COEF \
         actor_rollout_ref.actor.fsdp_config.param_offload=True \
         actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-        actor_rollout_ref.rollout.tensor_model_parallel_size=4 \
-        actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+        actor_rollout_ref.rollout.tensor_model_parallel_size=${TENSOR_PARALLEL_SIZE} \
+        actor_rollout_ref.rollout.gpu_memory_utilization=0.3 \
         actor_rollout_ref.rollout.enable_chunked_prefill=True \
         actor_rollout_ref.rollout.max_num_batched_tokens=$((6 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
-        actor_rollout_ref.rollout.n=8 \
+        actor_rollout_ref.rollout.n=${GRPO_GROUP_SIZE} \
         actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=$((1 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.ref.fsdp_config.param_offload=True \
         +algorithm.use_kl_in_reward=False \
@@ -229,7 +240,7 @@ python -u -m verl.trainer.main_ppo \
         trainer.default_local_dir="${CHECKPOINT_DIR}" \
         trainer.remove_previous_ckpt_in_save=True \
         trainer.total_epochs=$TOTAL_EPOCHS \
-        +trainer.early_stopping_enabled=True \
+        +trainer.early_stopping_enabled=False \
         +trainer.early_stopping_patience=20 \
         +trainer.early_stopping_min_delta=0.001 \
         +trainer.save_best_checkpoint=True

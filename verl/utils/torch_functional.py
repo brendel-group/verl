@@ -103,7 +103,7 @@ def clip_by_value(x, tensor_min, tensor_max):
     return clipped
 
 
-def entropy_from_logits(logits: torch.Tensor):
+def chunked_entropy_from_logits(logits: torch.Tensor):
     """Calculate entropy from logits."""
     CHUNKSIZE=64
     entropy_accu = []
@@ -115,7 +115,12 @@ def entropy_from_logits(logits: torch.Tensor):
         entropy_accu.append(entropy)
 
     return torch.concatenate(entropy_accu, dim=1)
-    
+
+def entropy_from_logits(logits: torch.Tensor):
+    """Calculate entropy from logits."""
+    pd = torch.nn.functional.softmax(logits, dim=-1)
+    entropy = torch.logsumexp(logits, dim=-1) - torch.sum(pd * logits, dim=-1)
+    return entropy
 
 def masked_sum(values, mask, axis=None):
     """Compute mean of tensor with a masked values."""

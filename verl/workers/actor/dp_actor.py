@@ -34,12 +34,41 @@ from verl.utils.ulysses import ulysses_pad_and_slice_inputs, gather_outpus_and_u
 from verl.utils.seqlen_balancing import rearrange_micro_batches, get_reverse_idx
 import verl.utils.torch_functional as verl_F
 from verl.utils.debug import log_gpu_memory_usage
+from copy import deepcopy
 
 from flash_attn.bert_padding import pad_input, unpad_input, rearrange, index_first_axis
 
 __all__ = ['DataParallelPPOActor']
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv('VERL_PPO_LOGGING_LEVEL', 'WARN'))
+
+def solve_alpha_beta(pos: float, neg: float, t: float):
+    """
+    Solve for alpha, beta given:
+        (alpha * pos) / (beta * neg) = t
+        alpha + beta = 1
+        alpha, beta >= 0
+    Args:
+        pos (float): non-negative
+        neg (float): non-negative
+        t   (float): in [0, 1]
+    Returns:
+        (alpha, beta) if a solution exists, else None
+    """
+    fallback_solution = 0.5, 0.5
+
+    # both positive
+    if pos > 0 and neg > 0:
+        if t > 0:
+            alpha = (t * neg) / (pos + t * neg)
+            beta = pos / (pos + t * neg)
+            return alpha, beta
+        else:  # t == 0
+            return 0.0, 1.0
+
+    else:
+        return fallback_solution
+
 
 class DataParallelPPOActor(BasePPOActor):
 
@@ -62,8 +91,19 @@ class DataParallelPPOActor(BasePPOActor):
             torch.compile(verl_F.entropy_from_logits, dynamic=True)
             if self.config.get('use_torch_compile', True)  #  use torch compile by default
             else verl_F.entropy_from_logits)
+        
+        self.chunked_compute_entropy_from_logits = (
+            torch.compile(verl_F.chunked_entropy_from_logits, dynamic=True)
+            if self.config.get('use_torch_compile', True)  #  use torch compile by default
+            else verl_F.chunked_entropy_from_logits)
 
-    def _forward_micro_batch(self, micro_batch, temperature) -> Tuple[torch.Tensor, torch.Tensor]:
+        # For the entropy change prediction, we need the logits. Cannot use sequence packing.
+        self.entropy_change_condition =  self.config.get('mask_negative_entropy_change', False) | \
+                                    self.config.get('mask_positive_entropy_change', False) | \
+                                    self.config.get('adaptive_scale_by_entropy_change', False)
+        
+
+    def _forward_micro_batch(self, micro_batch, temperature, reference_model_call=True) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Returns: 
             entropy: # (bs, response_len)
@@ -84,7 +124,10 @@ class DataParallelPPOActor(BasePPOActor):
             if position_ids.dim() == 3:  # qwen2vl mrope
                 position_ids = position_ids.transpose(0, 1)  # (bsz, 3, seqlen) -> (3, bsz, seqlen)
 
-            if self.use_remove_padding:
+            # we'll use sequence packing in case we're just computing log_probs (without gradients)
+            # or in case entropy_change_condition is False
+            if self.use_remove_padding and \
+                (reference_model_call or not self.entropy_change_condition):
                 input_ids_rmpad, indices, *_ = unpad_input(input_ids.unsqueeze(-1),
                                                            attention_mask)  # input_ids_rmpad (total_nnz, ...)
                 input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # (1, total_nnz)
@@ -148,6 +191,7 @@ class DataParallelPPOActor(BasePPOActor):
                 # only return response part:
                 entropy = full_entropy.squeeze(-1)[:, -response_length - 1:-1]  # (bsz, response_length)
                 log_probs = full_log_probs.squeeze(-1)[:, -response_length - 1:-1]  # (bsz, response_length)
+                
 
             else:  # not using rmpad and no ulysses sp
                 output = self.actor_module(input_ids=input_ids,
@@ -160,25 +204,19 @@ class DataParallelPPOActor(BasePPOActor):
                 logits.div_(temperature)
                 logits = logits[:, -response_length - 1:-1, :]  # (bsz, response_length, vocab_size)
                 
-                print(f'Response length: {response_length}')
-                print(f'Logits.shape: {logits.shape}')
-                
                 log_gpu_memory_usage("After logit computation", logger=logger)
 
                 # TODO: perhaps have to make this more computationally feasible. Still: I do not understand why we want
                 # to allocate 12 GiB with these operation...
                 log_probs = logprobs_from_logits(logits, micro_batch['responses'])
 
-                print(f"Log probs.shape: {log_probs.shape}")
                 # TODO: maybe use an approximation to the entropy instead...
-                entropy = verl_F.entropy_from_logits(logits)  # (bsz, response_length)
+                entropy = self.chunked_compute_entropy_from_logits(logits)  # (bsz, response_length)
 
                 log_gpu_memory_usage("After entropy computation", logger=logger)
 
-                print(f"Optimizer: {type(self.actor_optimizer)}, Found DEV_ESTIMATE_ENTROPY_DELTA: {self.config.get('DEV_ESTIMATE_ENTROPY_DELTA', False)}")
-                # monitoring-only entropy-delta estimate (no grad graph)
-                if self.config.get('DEV_ESTIMATE_ENTROPY_DELTA', False) and self.actor_module.training:
-                    ALPHA = 1e-6
+                if self.entropy_change_condition and self.actor_module.training:
+                    ALPHA = 1e-6 # stepsize
                     APPROX_K = 10000 # accuracy/cost tradeoff
 
                     with torch.no_grad():
@@ -230,14 +268,18 @@ class DataParallelPPOActor(BasePPOActor):
                         # first-order entropy change: 
                         # ΔH_t ≈ - sum_k ( (∂H/∂z_k) * Δz_k ), Δz = ALPHA * dL/dz
                         Delta_z = ALPHA * dL_dz                                                 # (B, L, K)
-                        H_t = (dH_dz * Delta_z).sum(dim=-1)                                     # (B, L)
+
+                        # TODO: Here, I've added a minus in front of H_t, as mask_pos and
+                        # mask_neg did show counterintuitive changes in entropy over training otherwise.
+                        # Did i make a sign error somewhere?
+                        H_t = -(dH_dz * Delta_z).sum(dim=-1)                                     # (B, L)
 
                         H_t_numpy = H_t.detach().cpu().numpy()
 
                     log_gpu_memory_usage("After entropy log computation", logger=logger)
                     return entropy, log_probs, H_t_numpy
 
-                return entropy, log_probs
+            return entropy, log_probs
 
 
     def _optimizer_step(self):
@@ -313,6 +355,7 @@ class DataParallelPPOActor(BasePPOActor):
         self.actor_module.train()
 
         temperature = data.meta_info['temperature']  # temperature must be in the data.meta_info to avoid slient error
+        meta_info = deepcopy(data.meta_info)
 
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids', 'old_log_probs', 'advantages']
         if self.config.use_kl_loss:
@@ -333,10 +376,13 @@ class DataParallelPPOActor(BasePPOActor):
         entropy_deltas = []
         advantage_buffer = []
 
-        for epoch in range(self.config.ppo_epochs):
-            for batch_idx, data in enumerate(dataloader):
+        for ppo_epoch in range(self.config.ppo_epochs):
+            for mini_batch_idx, data in enumerate(dataloader):
+                
+                print(f"[global_step]: {meta_info['global_steps']} [update_policy] mini_batch_idx: {mini_batch_idx}")
                 # split batch into micro_batches
                 mini_batch = data
+
                 if has_multi_modal_inputs:
                     self.gradient_accumulation = self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
                     num_micro_batches = mini_batch.batch.batch_size[0] // self.config.ppo_micro_batch_size_per_gpu
@@ -372,9 +418,11 @@ class DataParallelPPOActor(BasePPOActor):
                     clipping_mode = self.config.clipping_mode
 
                     # all return: (bsz, response_length)
-                    out = self._forward_micro_batch(micro_batch=data, temperature=temperature)
+                    out = self._forward_micro_batch(micro_batch=data, 
+                                                    temperature=temperature,
+                                                    reference_model_call=False)
 
-                    if self.config.get('DEV_ESTIMATE_ENTROPY_DELTA', False):
+                    if self.entropy_change_condition:
                         entropy, log_prob, H_t = out
                         entropy_deltas.append(H_t)
                         advantage_buffer.append(advantages.detach().clone().cpu().numpy())
@@ -385,7 +433,15 @@ class DataParallelPPOActor(BasePPOActor):
                         elif self.config.get('mask_positive_entropy_change', False):
                             mask = H_t > 0
                             advantages[mask] = 0.0
-                        
+                        elif self.config.get('adaptive_scale_by_entropy_change', False):
+                            
+                            t = meta_info['advantage_schedule'][meta_info['global_steps']]
+                            pos_mask, neg_mask = H_t > 0, H_t < 0
+                            Htpos, Htneg = H_t[pos_mask].sum(), H_t[neg_mask].sum() * -1
+                            alpha, beta = solve_alpha_beta(pos=Htpos, neg=Htneg, t=t)
+                            advantages[pos_mask] *= alpha
+                            advantages[neg_mask] *= beta
+
                     else:
                         entropy, log_prob = out
 
@@ -438,9 +494,9 @@ class DataParallelPPOActor(BasePPOActor):
             append_to_dict(metrics, data)
         self.actor_optimizer.zero_grad()
 
-        # NOTE: DEV_ESTIMATE_ENTROPY_DELTA
-        deltas : np.ndarray = np.concatenate(entropy_deltas)
-        advs : np.ndarray = np.concatenate(advantage_buffer)
-        metrics.update({'actor/H_t' : deltas, 'actor/advantages' : advs})
+        if self.entropy_change_condition:
+            deltas : np.ndarray = np.concatenate(entropy_deltas)
+            advs : np.ndarray = np.concatenate(advantage_buffer)
+            metrics.update({'actor/H_t' : deltas, 'actor/advantages' : advs})
         
         return metrics

@@ -2,10 +2,10 @@
 # Manual training script used to run on interactive nodes.
 # Set fixed values and defaults
 LEARNING_RATE=1e-6
-TOTAL_EPOCHS=20
+TOTAL_EPOCHS=10
 TRAIN_BATCH_SIZE=512
 MAX_PROMPT_LENGTH=1024
-MAX_RESPONSE_LENGTH=512
+MAX_RESPONSE_LENGTH=768
 SAVE_FREQ=5
 TEST_FREQ=2
 NNODES=1
@@ -17,9 +17,10 @@ PROJECT_NAME="entropy_logging"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 DATA_SEED=42
 
-EXPNAME="SUBSET_${MODEL_PATH}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}_${TIMESTAMP}"
+
+EXPNAME="DEBUG_${MODEL_PATH}_entropy_${ENTROPY_COEF}_kl_${KL_LOSS_COEF}_${TIMESTAMP}"
 CHECKPOINT_DIR="${RAY_DATA_HOME}/out/${PROJECT_NAME}/${EXPNAME}"  # Checkpoint directory
-TRAIN_FILES="data/math/train_subset_512.parquet"
+TRAIN_FILES="data/math/train.parquet"
 VAL_FILES="data/math500/test.parquet"
 
 echo "Configuration:"
@@ -76,7 +77,6 @@ conda activate verl
 # 2) Start Training
 # ─────────────────────────────────────────────────────────────────────────────
 echo "Starting training..."
-echo "WARNING: USING SUBSET FOR TRAINING"
 python -u -m verl.trainer.main_ppo \
         algorithm.adv_estimator=grpo \
         data.train_files="$TRAIN_FILES" \
@@ -86,12 +86,15 @@ python -u -m verl.trainer.main_ppo \
         data.max_response_length=$MAX_RESPONSE_LENGTH \
         data.truncation=left \
         +data.seed=$DATA_SEED \
-        actor_rollout_ref.model.use_remove_padding=False \
+        actor_rollout_ref.model.use_remove_padding=True \
         actor_rollout_ref.model.path=$MODEL_PATH \
         actor_rollout_ref.actor.use_dynamic_bsz=True \
         actor_rollout_ref.actor.optim.lr=$LEARNING_RATE \
-        +actor_rollout_ref.actor.DEV_ESTIMATE_ENTROPY_DELTA=True \
-        +actor_rollout_ref.actor.log_prob_max_token_len_per_gpu=$((2 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
+        +trainer.advantage_schedule=balanced \
+        +actor_rollout_ref.actor.adaptive_scale_by_entropy_change=False \
+        +actor_rollout_ref.actor.mask_positive_entropy_change=False \
+        +actor_rollout_ref.actor.mask_negative_entropy_change=False \
+        +actor_rollout_ref.actor.log_prob_max_token_len_per_gpu=$((1 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((1 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         actor_rollout_ref.actor.use_kl_loss=False \
         actor_rollout_ref.actor.kl_loss_coef=$KL_LOSS_COEF \
@@ -102,7 +105,7 @@ python -u -m verl.trainer.main_ppo \
         actor_rollout_ref.rollout.gpu_memory_utilization=0.3 \
         actor_rollout_ref.rollout.enable_chunked_prefill=True \
         actor_rollout_ref.rollout.max_num_batched_tokens=$((6 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
-        actor_rollout_ref.rollout.n=8 \
+        actor_rollout_ref.rollout.n=32 \
         actor_rollout_ref.ref.fsdp_config.param_offload=True \
         actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=$((2 * (MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))) \
         +algorithm.use_kl_in_reward=False \
@@ -115,9 +118,9 @@ python -u -m verl.trainer.main_ppo \
         trainer.save_freq=$SAVE_FREQ \
         trainer.test_freq=$TEST_FREQ \
         trainer.default_local_dir="${CHECKPOINT_DIR}" \
-        trainer.remove_previous_ckpt_in_save=False \
+        trainer.remove_previous_ckpt_in_save=True \
         trainer.total_epochs=$TOTAL_EPOCHS \
-        +trainer.early_stopping_enabled=True \
+        +trainer.early_stopping_enabled=False \
         +trainer.early_stopping_patience=20 \
         +trainer.early_stopping_min_delta=0.001 \
         +trainer.save_best_checkpoint=True
